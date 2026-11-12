@@ -1,4 +1,4 @@
-"""Command line: ``python -m kconfwhy snapshot|generate|verify``.
+"""Command line: ``python -m kconfigexplain snapshot|generate|verify``.
 
 ``snapshot`` exports the hardware snapshot of this machine, or of a remote one over SSH.
 ``generate`` writes the config fragment from a saved snapshot, or from a fresh one with ``--current``.
@@ -12,11 +12,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from kconfwhy import snapshot as snapshot_module
-from kconfwhy.kbuild import driver_sources, module_map, normalize
-from kconfwhy.kconfig import read_kconfig
-from kconfwhy.trace import fragment_text, read_aliases, read_snapshot, report_text, trace
-from kconfwhy.verify import read_config, verify
+from kconfigexplain import snapshot as snapshot_module
+from kconfigexplain.kbuild import driver_sources, module_map, normalize
+from kconfigexplain.kconfig import read_kconfig
+from kconfigexplain.trace import fragment_text, read_aliases, read_snapshot, report_text, trace
+from kconfigexplain.verify import read_config, verify
 
 
 def collect(ssh: str | None = None, ssh_cmd: str = "ssh") -> str:
@@ -91,7 +91,7 @@ def _verify(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="kconfwhy", description=__doc__)
+    parser = argparse.ArgumentParser(prog="kconfigexplain", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
 
     snap = commands.add_parser("snapshot", help="export the hardware snapshot of this machine or an SSH host")

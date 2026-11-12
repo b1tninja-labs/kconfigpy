@@ -1,7 +1,7 @@
 """A deliberately small Kconfig reader: symbols, prompts, dependencies and selects.
 
 It extracts the dependency graph and nothing else. The kernel's own ``conf`` remains the
-authority on what a configuration resolves to; ``kconfwhy.verify`` asks it.
+authority on what a configuration resolves to; ``kconfigexplain.verify`` asks it.
 """
 
 from __future__ import annotations

@@ -12,7 +12,7 @@ import importlib
 
 import pytest
 
-import kconfwhy as package
+import kconfigexplain as package
 
 SURFACE: list[tuple[str, str, str]] = []
 
