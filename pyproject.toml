@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kconfexplain"
+dynamic = ["version"]
+description = "Explainable Linux Kconfig analysis: derive a minimal kernel configuration from real hardware, with a recorded reason for every option"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+authors = [{ name = "Justin Capella" }]
+keywords = ["linux", "kernel", "kconfig", "attack-surface", "firmware"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy"]
+
+[project.scripts]
+kconfexplain = "kconfexplain.__main__:main"
+
+[tool.hatch.version]
+path = "kconfexplain/__init__.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.mypy]
+strict = true
+packages = ["kconfexplain"]
