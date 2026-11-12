@@ -1,13 +1,13 @@
-# kconfexplain
+# kconfwhy
 
 Explainable Linux Kconfig analysis. Give it a snapshot of real hardware and an exact kernel
 source tree, and it produces a minimal configuration fragment in which every option records
 why it is there.
 
-    python -m kconfexplain snapshot --ssh root@target --out host.tsv
-    python -m kconfexplain generate --snapshot host.tsv --tree linux-6.18.62 --out out/
-    python -m kconfexplain generate --current --ssh root@target --tree linux-6.18.62 --out out/
-    python -m kconfexplain verify --tree linux-6.18.62 --fragment out/hardware.config --config .config
+    python -m kconfwhy snapshot --ssh root@target --out host.tsv
+    python -m kconfwhy generate --snapshot host.tsv --tree linux-6.18.62 --out out/
+    python -m kconfwhy generate --current --ssh root@target --tree linux-6.18.62 --out out/
+    python -m kconfwhy verify --tree linux-6.18.62 --fragment out/hardware.config --config .config
 
 `trace` writes `hardware.config` and `report.md`. Run `make allnoconfig
 KCONFIG_ALLCONFIG=hardware.config`, then `verify` compares the result with the request and names
@@ -22,7 +22,7 @@ and the snapshot module is standard library only, so it runs on a target without
 Hardware-to-config tools exist: [autokernel](https://github.com/oddlama/autokernel),
 [kernelconfig](https://github.com/dywisor/kernelconfig),
 [AutoKernConf](https://github.com/heeplr/autokernconf) and `make localmodconfig`. Most rely on a
-separately maintained database or on what happens to be loaded today. kconfexplain reads its
+separately maintained database or on what happens to be loaded today. kconfwhy reads its
 mapping from the exact tree being built, and records the reason for each option.
 
 Hardening audits ([kernel-hardening-checker](https://github.com/a13xp0p0v/kernel-hardening-checker))

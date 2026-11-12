@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from kconfexplain.__main__ import main
-from kconfexplain.kbuild import driver_sources, module_map
-from kconfexplain.kconfig import And, Not, Or, Sym, Unknown, parse_expr, read_kconfig
-from kconfexplain.solve import Solver
-from kconfexplain.trace import Device, Snapshot, candidates, fragment_text, trace
-from kconfexplain.verify import holds, read_config, verify
+from kconfwhy.__main__ import main
+from kconfwhy.kbuild import driver_sources, module_map
+from kconfwhy.kconfig import And, Not, Or, Sym, Unknown, parse_expr, read_kconfig
+from kconfwhy.solve import Solver
+from kconfwhy.trace import Device, Snapshot, candidates, fragment_text, trace
+from kconfwhy.verify import holds, read_config, verify
 
 KCONFIG = """\
 mainmenu "Test"

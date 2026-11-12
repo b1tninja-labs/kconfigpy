@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from kconfexplain.kconfig import And, Const, Expr, KconfigDb, Not, Or, Sym, Unknown
+from kconfwhy.kconfig import And, Const, Expr, KconfigDb, Not, Or, Sym, Unknown
 
 # Never chosen to satisfy an "either/or" dependency: it exists to widen build coverage.
 BANNED = frozenset({"COMPILE_TEST"})

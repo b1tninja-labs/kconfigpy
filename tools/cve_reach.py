@@ -12,8 +12,8 @@ import json
 from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
-from kconfexplain.kbuild import _OBJ, _makefile_lines, _walk, object_map
-from kconfexplain.verify import read_config
+from kconfwhy.kbuild import _OBJ, _makefile_lines, _walk, object_map
+from kconfwhy.verify import read_config
 
 Version = tuple[int, ...]
 

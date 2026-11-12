@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from kconfexplain import snapshot
-from kconfexplain.__main__ import main
-from kconfexplain.trace import read_snapshot
+from kconfwhy import snapshot
+from kconfwhy.__main__ import main
+from kconfwhy.trace import read_snapshot
 
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="sysfs layout needs Linux")
