@@ -1,0 +1,17 @@
+menuconfig NETDEVICES
+	bool "Network device support"
+
+if NETDEVICES
+
+config ACME_NET
+	tristate "Acme network adapter (synthetic)"
+	depends on PCI && HAS_IOMEM
+	help
+	  A made-up network adapter used only by the kconfigpy fixture tree.
+
+endif
+
+config ACME_SERIAL
+	tristate "Acme serial port (synthetic)"
+	help
+	  A made-up serial port used only by the kconfigpy fixture tree.

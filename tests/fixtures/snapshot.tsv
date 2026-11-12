@@ -1,0 +1,3 @@
+dev	pci0000:00/0000:00:03.0	pci:v00001234d00005678	acme_net	acme_net
+dev	platform/acme-uart.0	platform:acme-uart	acme_serial_drv	
+mod	acme_net

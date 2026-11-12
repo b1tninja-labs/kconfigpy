@@ -1,0 +1,9 @@
+mainmenu "Synthetic kernel tree for kconfigpy tests (not a real kernel)"
+
+config PCI
+	bool "PCI support"
+
+config HAS_IOMEM
+	def_bool y
+
+source "drivers/Kconfig"
