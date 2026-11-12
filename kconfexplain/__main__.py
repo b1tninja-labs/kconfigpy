@@ -29,7 +29,10 @@ def collect(ssh: str | None = None, ssh_cmd: str = "ssh") -> str:
     )
     if proc.returncode != 0:
         raise RuntimeError(f"snapshot over ssh failed (exit {proc.returncode}): {proc.stderr.decode(errors='replace').strip()}")
-    return proc.stdout.decode("utf-8", errors="replace")
+    text = proc.stdout.decode("utf-8", errors="replace")
+    if not any(line.startswith("dev	") for line in text.splitlines()):
+        raise RuntimeError(f"snapshot from {ssh} has no device records: refusing to use it")
+    return text
 
 
 def _snapshot(args: argparse.Namespace) -> int:
@@ -52,6 +55,8 @@ def _generate(args: argparse.Namespace) -> int:
     modules = module_map(args.tree, args.arch)
     aliases = read_aliases(args.aliases) if args.aliases else []
     snapshot = read_snapshot(args.snapshot)
+    if not snapshot.devices:
+        raise RuntimeError(f"{args.snapshot} has no device records: a fragment from it would be empty, so it is refused")
     names = {d.driver for d in snapshot.devices if d.driver and not d.module and normalize(d.driver) not in modules}
     ambiguous: dict[str, list[str]] = {}
     for name, symbols in driver_sources(args.tree, names, args.arch).items():

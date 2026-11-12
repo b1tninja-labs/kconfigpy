@@ -20,6 +20,10 @@ MODULES = Path("/proc/modules")
 
 def records(sysfs: Path = SYSFS, modules: Path = MODULES) -> list[str]:
     """Return the snapshot records for one machine."""
+    if sys.platform != "linux":
+        raise NotImplementedError(f"the snapshot reads Linux sysfs; this is {sys.platform}. Use --ssh HOST.")
+    if not sysfs.is_dir():
+        raise FileNotFoundError(f"{sysfs} is missing: not a Linux sysfs, so there is nothing to snapshot")
     out: list[str] = []
     for dirpath, _dirs, files in os.walk(sysfs):
         if "modalias" not in files:
