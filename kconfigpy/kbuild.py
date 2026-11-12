@@ -5,9 +5,12 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 _SKIP_TOP = {"Documentation", "LICENSES", "samples", "scripts", "tools", "usr"}
+ALIAS_FILES = ("modules.alias", "modules.builtin.alias")
+_MODULES_ON = re.compile(r"^CONFIG_MODULES=y\s*$", re.MULTILINE)
 _OBJ = re.compile(r"^\s*obj-\$\(CONFIG_([A-Za-z0-9_]+)\)\s*(?:\+=|:=|=)\s*(.*)$")
 _COMPOSITE = re.compile(r"^\s*([A-Za-z0-9_\-]+)-(?:objs|y)\s*(?:\+=|:=|=)\s*(.*)$")
 
@@ -95,3 +98,68 @@ def driver_sources(tree: Path, names: set[str], arch: str = "x86") -> dict[str, 
                 symbols = objects.get((relative / name[:-2]).as_posix(), set())
                 result.setdefault(found, set()).update(symbols)
     return result
+
+
+class BuildArtifactsMissing(FileNotFoundError):
+    """The built tree lacks the ``depmod`` output that aliases come from."""
+
+
+def module_aliases(tree: Path) -> list[tuple[str, str]]:
+    """Read ``modules.alias`` and ``modules.builtin.alias`` from a built tree as ``(pattern, module)`` pairs.
+
+    Both files are written by ``depmod`` from the ``modpost`` output of a finished build. They are read,
+    never derived: a ``MODULE_DEVICE_TABLE`` in a source file says what the source could build, not what
+    this build contains. When either file is missing this refuses, because an empty table would make every
+    device look unclaimed rather than unknown.
+    """
+    missing = [name for name in ALIAS_FILES if not (tree / name).is_file()]
+    if missing:
+        raise BuildArtifactsMissing(
+            f"{tree} has no {' or '.join(missing)}: these are depmod output from a finished build, "
+            "not derivable from the sources; run depmod on the built modules first"
+        )
+    pairs: list[tuple[str, str]] = []
+    for name in ALIAS_FILES:
+        for line in (tree / name).read_text(encoding="utf-8", errors="replace").splitlines():
+            parts = line.split()
+            if len(parts) == 3 and parts[0] == "alias":
+                pairs.append((parts[1], normalize(parts[2])))
+    return pairs
+
+
+@dataclass(frozen=True)
+class BuiltinMap:
+    """Driver names mapped to the symbols that build them into the kernel, and the line the report states."""
+
+    modules_enabled: bool
+    drivers: dict[str, set[str]]
+    statement: str
+
+
+def modules_enabled(config: Path) -> bool:
+    """True only when the ``.config`` says ``CONFIG_MODULES=y``; an absent or ``not set`` line means off."""
+    return _MODULES_ON.search(config.read_text(encoding="utf-8", errors="replace")) is not None
+
+
+def builtin_map(config: Path, tree: Path, names: set[str], arch: str = "x86") -> BuiltinMap:
+    """With ``CONFIG_MODULES`` off, map each driver name to the symbols that must be ``=y``.
+
+    No module can be loaded in that kernel, so every driver is built in. The statement says so and
+    lists the drivers that could not be mapped, for the report to carry.
+    """
+    if modules_enabled(config):
+        return BuiltinMap(
+            True, {}, f"CONFIG_MODULES is on in {config.name}: drivers load as modules, none is built in."
+        )
+    wanted = {normalize(name) for name in names}
+    modules = module_map(tree, arch)
+    found = {name: modules[name] for name in wanted if name in modules}
+    for name, symbols in driver_sources(tree, wanted - set(found), arch).items():
+        found.setdefault(name, set()).update(symbols)
+    unmapped = sorted(wanted - set(found))
+    statement = (
+        f"CONFIG_MODULES is off in {config.name}: no module can be loaded, so {len(found)} driver(s) "
+        f"are mapped to built-in symbols that must be =y ({', '.join(sorted(found)) or 'none'}); "
+        f"{len(unmapped)} driver(s) have no built-in symbol ({', '.join(unmapped) or 'none'})."
+    )
+    return BuiltinMap(False, found, statement)
