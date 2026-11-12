@@ -32,3 +32,4 @@ target-version = "py312"
 [tool.mypy]
 strict = true
 packages = ["kconfexplain"]
+mypy_path = "tools"

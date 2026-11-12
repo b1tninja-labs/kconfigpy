@@ -94,7 +94,9 @@ class Reach:
                 return True
         if path.suffix == ".c":
             symbols = self.objects.get(str(path.with_suffix("")))
-            return bool(symbols) and not symbols & set(self.config)
+            if not symbols:
+                return False
+            return not symbols & set(self.config)
         return False
 
 

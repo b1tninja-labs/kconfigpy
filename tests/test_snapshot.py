@@ -55,7 +55,7 @@ def test_missing_modules_file_is_not_an_error(tmp_path: Path) -> None:
     assert all(not line.startswith("mod") for line in snapshot.records(sysfs, tmp_path / "absent"))
 
 
-def test_snapshot_command_writes_a_file(tmp_path: Path, monkeypatch) -> None:
+def test_snapshot_command_writes_a_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sysfs, modules = _fake_machine(tmp_path)
     monkeypatch.setattr(snapshot, "SYSFS", sysfs)
     monkeypatch.setattr(snapshot, "MODULES", modules)
@@ -64,20 +64,16 @@ def test_snapshot_command_writes_a_file(tmp_path: Path, monkeypatch) -> None:
     assert out.read_text(encoding="utf-8").startswith("dev\t")
 
 
-def test_local_snapshot_is_refused_off_linux(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(snapshot.sys, "platform", "win32")
-    import pytest as _pytest
-
-    with _pytest.raises(NotImplementedError, match="Use --ssh HOST"):
+def test_local_snapshot_is_refused_off_linux(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    with pytest.raises(NotImplementedError, match="Use --ssh HOST"):
         snapshot.records(tmp_path, tmp_path / "modules")
 
 
 def test_empty_sysfs_is_refused_not_written(tmp_path: Path) -> None:
-    import pytest as _pytest
-
     if sys.platform != "linux":
-        _pytest.skip("linux only")
+        pytest.skip("linux only")
     empty = tmp_path / "devices"
     empty.mkdir()
-    with _pytest.raises(RuntimeError, match="refusing to write an empty snapshot"):
+    with pytest.raises(RuntimeError, match="refusing to write an empty snapshot"):
         snapshot.records(empty, tmp_path / "modules")
