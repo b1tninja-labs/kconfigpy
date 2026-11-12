@@ -24,7 +24,7 @@ import re
 
 import pytest
 
-import kconfigexplain as package
+import kconfigpy as package
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 STATUSES = {"[ok]", "[x]", "[part]", "[ ]", "[no]"}

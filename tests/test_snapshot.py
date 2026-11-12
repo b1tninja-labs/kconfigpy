@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from kconfigexplain import snapshot
-from kconfigexplain.__main__ import main
-from kconfigexplain.trace import read_snapshot
+from kconfigpy import snapshot
+from kconfigpy.__main__ import main
+from kconfigpy.trace import read_snapshot
 
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="sysfs layout needs Linux")

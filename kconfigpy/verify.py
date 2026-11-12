@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from kconfigexplain.kconfig import And, Const, Expr, KconfigDb, Not, Or, Sym, Unknown
+from kconfigpy.kconfig import And, Const, Expr, KconfigDb, Not, Or, Sym, Unknown
 
 _SET = re.compile(r"^CONFIG_([A-Za-z0-9_]+)=(.*)$")
 

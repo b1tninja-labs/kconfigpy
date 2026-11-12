@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kconfigexplain"
+name = "kconfigpy"
 dynamic = ["version"]
 description = "Explainable Linux Kconfig analysis: derive a minimal kernel configuration from real hardware, with a recorded reason for every option"
 readme = "README.md"
@@ -17,10 +17,10 @@ dependencies = []
 dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
-kconfigexplain = "kconfigexplain.__main__:main"
+kconfigpy = "kconfigpy.__main__:main"
 
 [tool.hatch.version]
-path = "kconfigexplain/__init__.py"
+path = "kconfigpy/__init__.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -31,5 +31,5 @@ target-version = "py312"
 
 [tool.mypy]
 strict = true
-packages = ["kconfigexplain"]
+packages = ["kconfigpy"]
 mypy_path = "tools"
