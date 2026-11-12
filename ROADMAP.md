@@ -7,6 +7,8 @@ if the behaviour broke. `ROADMAP.md` is the source of truth; the GitHub issues a
 |---|---|---|---|---|
 | `fwd.reader` | [x] | forward | Kconfig dependency reader, Makefile module map, minimal solver, reasons per option | `tests/test_pipeline.py::test_every_option_records_a_reason` |
 | `fwd.verify` | [x] | forward | `verify` checks a fragment against the kernel's own resolved `.config` | `tests/test_pipeline.py::test_verify_names_the_blocking_dependency` |
+| `cli.snapshot` | [x] | cli | `snapshot` exports a hardware snapshot from this machine or over SSH, from one stdlib-only module | `tests/test_snapshot.py::test_snapshot_command_writes_a_file` |
+| `cli.generate` | [ ] | cli | `generate` writes a fragment from a saved snapshot or a fresh one (`--current`), with an end-to-end test on a real kernel tree | |
 | `fwd.modalias` | [ ] | forward | Generate `modules.alias` from the exact tree instead of accepting one from a host | |
 | `fwd.select` | [ ] | forward | Follow `select` chains in the report, so implied options also carry a reason | |
 | `fwd.roles` | [ ] | forward | Role fragments (networking, containers) with the same provenance as hardware | |

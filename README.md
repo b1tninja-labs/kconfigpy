@@ -4,7 +4,9 @@ Explainable Linux Kconfig analysis. Give it a snapshot of real hardware and an e
 source tree, and it produces a minimal configuration fragment in which every option records
 why it is there.
 
-    python -m kconfexplain trace --tree linux-6.18.62 --snapshot host.tsv --out out/
+    python -m kconfexplain snapshot --ssh root@target --out host.tsv
+    python -m kconfexplain generate --snapshot host.tsv --tree linux-6.18.62 --out out/
+    python -m kconfexplain generate --current --ssh root@target --tree linux-6.18.62 --out out/
     python -m kconfexplain verify --tree linux-6.18.62 --fragment out/hardware.config --config .config
 
 `trace` writes `hardware.config` and `report.md`. Run `make allnoconfig
@@ -12,8 +14,8 @@ KCONFIG_ALLCONFIG=hardware.config`, then `verify` compares the result with the r
 the dependency that blocked anything the kernel dropped. The kernel's own `conf` is always the
 authority; this tool only proposes.
 
-`tools/collect-snapshot.sh` gathers the snapshot on the target. It only reads from `/sys` and
-`/proc/modules`.
+The `snapshot` command gathers it, locally or over SSH (`--ssh HOST`). It only reads `/sys` and `/proc/modules`,
+and the snapshot module is standard library only, so it runs on a target without installing anything there.
 
 ## How it differs from what exists
 
