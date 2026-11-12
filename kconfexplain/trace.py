@@ -26,7 +26,7 @@ class Snapshot:
 
 
 def read_snapshot(path: Path) -> Snapshot:
-    """Read the tab-separated output of ``tools/collect-snapshot.sh``."""
+    """Read the tab-separated records written by ``kconfexplain snapshot``."""
     snapshot = Snapshot()
     for line in path.read_text(encoding="utf-8").splitlines():
         fields = line.split("\t")
