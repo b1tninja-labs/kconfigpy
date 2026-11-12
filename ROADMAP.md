@@ -10,7 +10,7 @@ if the behaviour broke. `ROADMAP.md` is the source of truth; the GitHub issues a
 | `cli.snapshot` | [x] | cli | `snapshot` exports a hardware snapshot from this machine or over SSH, from one stdlib-only module | `tests/test_snapshot.py::test_snapshot_command_writes_a_file` |
 | `cli.generate` | [ ] | cli | `generate` writes a fragment from a saved snapshot or a fresh one (`--current`), with an end-to-end test on a real kernel tree | |
 | `fwd.modalias` | [ ] | forward | Read `modules.alias` and `modules.builtin.alias` from the built tree, the output of `modpost` and `depmod`, and refuse when they are missing; never derive them from source | |
-| `fwd.select` | [ ] | forward | Follow `select` chains in the report, so implied options carry a reason. An option forced by `select` whose own dependencies are unmet is reported as forced, not solved, and `verify` has the final say | |
+| `fwd.select` | [x] | forward | Follow `select` chains in the report, so implied options carry a reason. An option forced by `select` whose own dependencies are unmet is reported as forced, not solved, and `verify` has the final say | `tests/test_select.py::test_select_forced_option_with_unmet_dependency_is_forced_not_solved` |
 | `fwd.roles` | [ ] | forward | Role fragments (networking, containers) with the same provenance as hardware | |
 | `fwd.surface` | [ ] | forward | Attack-surface report: which options bring which code, and banned-feature checks | |
 | `fwd.builtin` | [ ] | forward | With `CONFIG_MODULES` off, map drivers to built-in symbols and say so in the report | |

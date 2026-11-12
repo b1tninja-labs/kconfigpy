@@ -115,6 +115,7 @@ def report_text(result: Trace) -> str:
     out += [f"## Options enabled ({len(solution.enabled)})", ""]
     out += [f"- `{s}`: {why}" for s, why in sorted(solution.enabled.items())]
     sections = [
+        ("Forced by select, dependencies unmet", solution.forced),
         ("Must stay off", solution.forbidden),
         ("Left to the kernel (no prompt)", solution.assumed),
         ("Not evaluated", solution.unknown),
