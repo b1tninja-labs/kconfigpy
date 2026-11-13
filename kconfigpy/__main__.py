@@ -13,10 +13,34 @@ import sys
 from pathlib import Path
 
 from kconfigpy import snapshot as snapshot_module
-from kconfigpy.kbuild import driver_sources, module_map, normalize
+from kconfigpy.kbuild import (
+    ALIAS_FILES,
+    BuildArtifactsMissing,
+    BuiltinMap,
+    builtin_map,
+    driver_sources,
+    module_aliases,
+    module_map,
+    modules_enabled,
+    normalize,
+)
 from kconfigpy.kconfig import read_kconfig
-from kconfigpy.trace import fragment_text, read_aliases, read_excluded, read_snapshot, report_text, trace
+from kconfigpy.trace import (
+    fragment_text,
+    read_aliases,
+    read_builtin_modinfo,
+    read_excluded,
+    read_snapshot,
+    report_text,
+    trace,
+)
 from kconfigpy.verify import read_config, verify
+
+
+BUILT_TREE_HELP = (
+    "build output directory with modules.alias, modules.builtin.alias and .config; "
+    "aliases come from there, and with CONFIG_MODULES off drivers map to built-in symbols"
+)
 
 
 def collect(ssh: str | None = None, ssh_cmd: str = "ssh") -> str:
@@ -46,14 +70,36 @@ def _snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def _built_tree_inputs(built_tree: Path) -> tuple[list[tuple[str, str]], Path]:
+    """Aliases and ``.config`` from a build output directory; refuse naming whichever file is missing."""
+    config = built_tree / ".config"
+    if not config.is_file():
+        raise BuildArtifactsMissing(f"{built_tree} has no .config: it says whether CONFIG_MODULES is on")
+    if not modules_enabled(config) and not any((built_tree / name).is_file() for name in ALIAS_FILES):
+        # No depmod runs when modules are off; the kernel build writes the built-in aliases here instead.
+        modinfo = built_tree / "modules.builtin.modinfo"
+        if not modinfo.is_file():
+            raise BuildArtifactsMissing(
+                f"{built_tree} has no modules.builtin.modinfo, modules.alias or modules.builtin.alias: "
+                "aliases come from a finished build, not from the sources"
+            )
+        return read_builtin_modinfo(modinfo), config
+    return module_aliases(built_tree), config
+
+
 def _generate(args: argparse.Namespace) -> int:
+    aliases: list[tuple[str, str]] = []
+    config: Path | None = None
+    if args.built_tree:
+        aliases, config = _built_tree_inputs(args.built_tree)
+    if args.aliases:
+        aliases += read_aliases(args.aliases)
     if args.current:
         args.out.mkdir(parents=True, exist_ok=True)
         args.snapshot = args.out / "snapshot.tsv"
         args.snapshot.write_text(collect(args.ssh, args.ssh_cmd), encoding="utf-8")
     db = read_kconfig(args.tree, args.arch)
     modules = module_map(args.tree, args.arch)
-    aliases = read_aliases(args.aliases) if args.aliases else []
     snapshot = read_snapshot(args.snapshot)
     if not snapshot.devices:
         raise RuntimeError(
@@ -66,8 +112,17 @@ def _generate(args: argparse.Namespace) -> int:
             modules[normalize(name)] = symbols
         elif symbols:
             ambiguous[normalize(name)] = sorted(symbols)
+    builtin: BuiltinMap | None = None
+    if config is not None:
+        bound_names = {d.module or normalize(d.driver) for d in snapshot.devices if d.module or d.driver}
+        builtin = builtin_map(config, args.tree, bound_names, args.arch)
+        for name, symbols in builtin.drivers.items():
+            if len(symbols) == 1:
+                modules.setdefault(name, symbols)
     result = trace(snapshot, db, modules, aliases, read_excluded(args.exclude) if args.exclude else None)
     result.ambiguous = ambiguous
+    if builtin is not None and not builtin.modules_enabled:
+        result.builtin_statement = builtin.statement
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "hardware.config").write_text(fragment_text(result), encoding="utf-8")
     (args.out / "report.md").write_text(report_text(result), encoding="utf-8")
@@ -109,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     gen.add_argument("--tree", type=Path, required=True)
     gen.add_argument("--aliases", type=Path, help="modules.alias, to find drivers for unbound devices")
     gen.add_argument("--exclude", type=Path, help="symbols never to enable, one per line")
+    gen.add_argument("--built-tree", type=Path, help=BUILT_TREE_HELP)
     gen.add_argument("--arch", default="x86")
     gen.add_argument("--out", type=Path, required=True)
     gen.set_defaults(run=_generate)
@@ -118,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     trace_cmd.add_argument("--snapshot", type=Path, required=True)
     trace_cmd.add_argument("--aliases", type=Path, help="modules.alias, to find drivers for unbound devices")
     trace_cmd.add_argument("--exclude", type=Path, help="symbols never to enable, one per line")
+    trace_cmd.add_argument("--built-tree", type=Path, help=BUILT_TREE_HELP)
     trace_cmd.add_argument("--arch", default="x86")
     trace_cmd.add_argument("--out", type=Path, required=True)
     trace_cmd.set_defaults(run=_generate, current=False, ssh=None, ssh_cmd="ssh")
@@ -130,7 +187,11 @@ def main(argv: list[str] | None = None) -> int:
     verify_cmd.set_defaults(run=_verify)
 
     args = parser.parse_args(argv)
-    return int(args.run(args))
+    try:
+        return int(args.run(args))
+    except BuildArtifactsMissing as error:
+        print(f"kconfigpy: error: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

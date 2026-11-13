@@ -57,6 +57,21 @@ def read_aliases(path: Path) -> list[tuple[str, str]]:
     return pairs
 
 
+def read_builtin_modinfo(path: Path) -> list[tuple[str, str]]:
+    """Read ``(pattern, driver)`` pairs from ``modules.builtin.modinfo``, the ``name.alias=pattern`` records.
+
+    A build with ``CONFIG_MODULES`` off never runs ``depmod``, so it has no ``modules.alias``; the aliases of
+    what it built in are in this file, which the kernel build itself writes.
+    """
+    pairs = []
+    for record in path.read_bytes().split(b"\0"):
+        name, _, pattern = record.decode("utf-8", errors="replace").partition("=")
+        driver, _, key = name.rpartition(".")
+        if key == "alias" and driver and pattern:
+            pairs.append((pattern, normalize(driver)))
+    return pairs
+
+
 def candidates(modalias: str, aliases: list[tuple[str, str]]) -> list[str]:
     """Modules whose alias patterns claim this device."""
     return sorted({module for pattern, module in aliases if fnmatch.fnmatchcase(modalias, pattern)})
@@ -77,6 +92,7 @@ class Trace:
     loaded_only: dict[str, list[str]]
     unmapped: list[str]
     ambiguous: dict[str, list[str]] = field(default_factory=dict)
+    builtin_statement: str | None = None
 
 
 def trace(
@@ -125,6 +141,8 @@ def fragment_text(result: Trace) -> str:
 
 def report_text(result: Trace) -> str:
     out = ["# Hardware trace", ""]
+    if result.builtin_statement is not None:
+        out += ["modules are off: drivers mapped to built-in symbols", "", result.builtin_statement, ""]
     for status in ("bound", "available", "unclaimed"):
         rows = [r for r in result.rows if r.status == status]
         out += [f"## {status.capitalize()} devices ({len(rows)})", ""]
