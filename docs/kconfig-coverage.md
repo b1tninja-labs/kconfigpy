@@ -63,7 +63,7 @@ Tests are in `tests/test_kconfig_language.py` unless a file is named.
 | `def_bool`, `def_tristate` | 560 | partial | Type and "has a default". The value and its `if` are dropped | `test_def_bool_sets_the_type_and_a_default_without_a_prompt`; `kc.defaults` |
 | `default` | 4,204 | gap | Only "has a default" is recorded. The value and the 857 `if` conditions are dropped | `kc.defaults` |
 | `select` | 15,401 | partial | The target is recorded and followed | `test_select_records_the_selected_symbol`, `tests/test_select.py::test_select_chain_is_followed_and_each_option_has_a_reason` |
-| `select ... if <expr>` | 1,348 | done | The condition is kept. The select is followed only when the requested options make it hold; otherwise it is listed as not followed, with the condition | `tests/test_select_if.py::test_unmet_condition_is_not_followed_and_says_why` |
+| `select ... if <expr>` | 1,348 | done | The condition is kept. The select is followed only when the requested options decide that it holds; otherwise it is listed as not followed, with the condition | `tests/test_select_if.py::test_unmet_condition_is_not_followed_and_says_why` |
 | `imply` | 451 | gap | Not read | `kc.imply` |
 | `range` | 120 | gap | Not read | `kc.values` |
 | `modules` | 1 | gap | Not read; `MODULES` is an ordinary symbol to the reader | `kc.tristate` |
@@ -129,18 +129,22 @@ instead: `conf` records every probe result as a symbol (`CC_IS_GCC`, `CC_HAS_...
 | Kind of loss | Example | Does `verify` catch it? |
 |---|---|---|
 | Asking for more than needed | Before `kc.select-if`: a `select ... if` whose condition is false was followed anyway | **No.** The extra options resolve and are kept. The fragment is valid but not minimal |
-| Not following a select the kernel will follow | `select X if SMP`, where `SMP` is on by `default` and was not requested | Not a fragment error: `conf` applies the select itself. The report says the condition was not met by the request |
+| Not following a select the kernel will follow | `select X if SMP`, where `SMP` is on by `default` and was not requested | Not a fragment error: `conf` applies the select itself. The report says the request does not decide the condition |
 | Asking for something that cannot hold | Two members of one choice | Yes, as a dropped option, without the reason |
 | Not predicting what else turns on | `imply`, `default y` | Not a fragment error. The attack-surface report must read the resolved `.config`, not the fragment |
 | A term that needs a value | `NR_CPUS >= 64` | Reported before the build as unevaluated |
 
 The first row was the only loss `verify` could not see, and `kc.select-if` closed it. On the router's
-snapshot against 6.18.62 the proposal went from 60 options to 53: `KGDB`, `DEBUG_KERNEL`, `SMP`, `PROC_FS`,
-`SCHED_SMT`, `ACPI_CONTAINER` and `CPU_IDLE_GOV_MENU` are no longer requested, and 93 conditional selects are
-listed as not followed (91 unmet by the request, 2 not evaluated).
+snapshot against 6.18.62 the proposal went from 60 options to 52: `KGDB`, `DEBUG_KERNEL`, `SMP`, `PROC_FS`,
+`SCHED_SMT`, `ACPI_CONTAINER`, `CPU_IDLE_GOV_MENU` and `CPU_IDLE_GOV_LADDER` are no longer requested, and 96
+conditional selects are listed as not followed (93 the request does not decide, 3 not evaluated).
 
 A condition is judged against what was requested, not against defaults, which are not modelled yet
-(`kc.defaults`). So "not met" means the request does not make it hold, not that `conf` will leave it off.
+(`kc.defaults`). An option the request never mentions is **undecided**, not off: a default or another
+fragment may turn it on. So `select X if !Y` is followed only when the request itself requires `Y` off.
+The first version of this fix treated an unmentioned `Y` as off, and on the router it then requested
+`CPU_IDLE_GOV_LADDER` (selected `if !NO_HZ && !NO_HZ_IDLE`) although a role fragment sets `NO_HZ_IDLE=y`.
+Checking the resolved configuration against the previous one is what caught it.
 
 ## Completion
 

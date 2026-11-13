@@ -20,6 +20,7 @@ class Solution:
     # symbol -> the conditional select that was not followed, and why: "select X if <expr>" is followed
     # only when the requested options make <expr> hold
     conditional: dict[str, str] = field(default_factory=dict)
+    excluded: dict[str, str] = field(default_factory=dict)  # symbol on the caller's exclude list -> who wanted it
     forbidden: dict[str, str] = field(default_factory=dict)  # symbol -> why it must stay off
     assumed: dict[str, str] = field(default_factory=dict)  # promptless symbol -> who needs it
     unknown: dict[str, str] = field(default_factory=dict)  # unevaluated term -> who needs it
@@ -32,6 +33,11 @@ class Solver:
         self.db = db
         self._solution = Solution()
         self._pending: list[tuple[str, str, Expr]] = []  # (owner, target, condition) not yet followed
+        self._excluded: dict[str, str] = {}  # symbol -> why the caller excludes it
+
+    def exclude(self, name: str, why: str) -> None:
+        """Never enable this symbol, and so never follow what it depends on or selects."""
+        self._excluded[name] = why
 
     @property
     def solution(self) -> Solution:
@@ -42,7 +48,7 @@ class Solver:
     def cost(self, expr: Expr) -> float:
         """How many new options this term would switch on; infinite if it cannot hold."""
         if isinstance(expr, Sym):
-            if expr.name in BANNED or expr.name in self._solution.forbidden:
+            if expr.name in BANNED or expr.name in self._solution.forbidden or expr.name in self._excluded:
                 return math.inf
             on = expr.name in self._solution.enabled or expr.name in self._solution.forced
             return 0 if on or not self.db.is_settable(expr.name) else 1
@@ -65,6 +71,9 @@ class Solver:
     def enable(self, name: str, why: str) -> Definition | None:
         """Enable a symbol and walk its dependencies; return its definition if it switched on."""
         if name in self._solution.enabled or name in self._solution.forced:
+            return None
+        if name in self._excluded:
+            self._solution.excluded.setdefault(name, f"{self._excluded[name]}; wanted: {why}")
             return None
         if name in self._solution.forbidden:
             self._solution.conflicts.append(
@@ -95,10 +104,16 @@ class Solver:
                 self._pending.append((owner, target, condition))
 
     def holds(self, expr: Expr) -> bool | None:
-        """Whether the requested options make this condition hold; None when it cannot be evaluated."""
+        """Whether the request decides this condition: True, False, or None when it does not.
+
+        A symbol the request never mentions is undecided, not off: a default or another fragment may turn it
+        on. So ``!X`` holds only when the request itself requires X off.
+        """
         if isinstance(expr, Sym):
             solution = self._solution
-            return expr.name in solution.enabled or expr.name in solution.forced or expr.name in solution.assumed
+            if expr.name in solution.enabled or expr.name in solution.forced or expr.name in solution.assumed:
+                return True
+            return False if expr.name in solution.forbidden else None
         if isinstance(expr, Const):
             return expr.value != "n"
         if isinstance(expr, Not):
@@ -133,7 +148,12 @@ class Solver:
         for owner, target, condition in self._pending:
             if target in solution.enabled or target in solution.forced or target in solution.assumed:
                 continue
-            verdict = "is not evaluated" if self.holds(condition) is None else "is not met by the requested options"
+            if self.holds(condition) is False:
+                verdict = "the requested options rule out"
+            elif _unevaluated(condition):
+                verdict = "is not evaluated"
+            else:
+                verdict = "the requested options do not decide"
             reason = f"selected by {owner} only if {show(condition)}, which {verdict}"
             previous = solution.conditional.get(target)
             solution.conditional[target] = f"{previous}; {reason}" if previous else reason
@@ -193,6 +213,14 @@ class Solver:
             self.forbid(expr.left if isinstance(expr.left, Sym) else expr.right, owner)
         elif isinstance(expr, Not):
             self.satisfy(expr.term, owner)
+
+
+def _unevaluated(expr: Expr) -> bool:
+    if isinstance(expr, Unknown):
+        return True
+    if isinstance(expr, And | Or):
+        return _unevaluated(expr.left) or _unevaluated(expr.right)
+    return isinstance(expr, Not) and _unevaluated(expr.term)
 
 
 def _negates(expr: Expr) -> bool:

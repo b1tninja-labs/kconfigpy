@@ -37,6 +37,16 @@ def read_snapshot(path: Path) -> Snapshot:
     return snapshot
 
 
+def read_excluded(path: Path) -> dict[str, str]:
+    """Read an exclude list: one symbol per line, with or without ``CONFIG_``; ``#`` starts a comment."""
+    excluded = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name = line.split("#", 1)[0].strip().removeprefix("CONFIG_")
+        if name:
+            excluded[name] = f"listed in {path.name}"
+    return excluded
+
+
 def read_aliases(path: Path) -> list[tuple[str, str]]:
     """Read ``modules.alias`` as ``(pattern, module)`` pairs."""
     pairs = []
@@ -69,9 +79,21 @@ class Trace:
     ambiguous: dict[str, list[str]] = field(default_factory=dict)
 
 
-def trace(snapshot: Snapshot, db: KconfigDb, modules: dict[str, set[str]], aliases: list[tuple[str, str]]) -> Trace:
-    """Enable only what the bound devices need; list everything else for review."""
+def trace(
+    snapshot: Snapshot,
+    db: KconfigDb,
+    modules: dict[str, set[str]],
+    aliases: list[tuple[str, str]],
+    excluded: dict[str, str] | None = None,
+) -> Trace:
+    """Enable only what the bound devices need; list everything else for review.
+
+    ``excluded`` maps a symbol to why the caller does not want it. It is never enabled, so nothing it
+    depends on or selects is followed either.
+    """
     solver = Solver(db)
+    for name, why in (excluded or {}).items():
+        solver.exclude(name, why)
     rows: list[DeviceRow] = []
     bound_modules: set[str] = set()
     unmapped: set[str] = set()
@@ -116,6 +138,7 @@ def report_text(result: Trace) -> str:
     out += [f"- `{s}`: {why}" for s, why in sorted(solution.enabled.items())]
     sections = [
         ("Forced by select, dependencies unmet", solution.forced),
+        ("Excluded on request", solution.excluded),
         ("Conditional select not followed", solution.conditional),
         ("Must stay off", solution.forbidden),
         ("Left to the kernel (no prompt)", solution.assumed),

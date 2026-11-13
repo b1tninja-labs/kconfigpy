@@ -34,11 +34,15 @@ and CVE filters ([CVEhound](https://github.com/linux-analysis/cvehound)) are com
   and leaves 225 of 72,310 dependency terms unevaluated (numeric tests and compiler probes), which are
   reported and left to `conf`.
 - It does not yet model when a `default`, `imply` or `choice` applies. A `select X if <expr>` is followed
-  only when the requested options make the condition hold, and is reported otherwise.
+  only when the requested options decide that the condition holds, and is reported otherwise.
   [docs/kconfig-coverage.md](docs/kconfig-coverage.md) lists every construct, its status and the
   roadmap row that closes it.
 - Module-to-option mapping reads `obj-$(CONFIG_X)` lines, so a module built another way is listed
   as unmapped, not guessed.
 - A snapshot only sees hardware and drivers present at capture time.
+
+`generate --exclude FILE` takes a list of options never to enable, one per line. An excluded option is
+not requested, and nothing it depends on or selects is followed. The report lists each one that a device
+wanted.
 
 See `ROADMAP.md` for the planned reverse direction: inferring a configuration from a kernel binary.

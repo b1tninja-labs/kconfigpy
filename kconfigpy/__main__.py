@@ -15,7 +15,7 @@ from pathlib import Path
 from kconfigpy import snapshot as snapshot_module
 from kconfigpy.kbuild import driver_sources, module_map, normalize
 from kconfigpy.kconfig import read_kconfig
-from kconfigpy.trace import fragment_text, read_aliases, read_snapshot, report_text, trace
+from kconfigpy.trace import fragment_text, read_aliases, read_excluded, read_snapshot, report_text, trace
 from kconfigpy.verify import read_config, verify
 
 
@@ -66,7 +66,7 @@ def _generate(args: argparse.Namespace) -> int:
             modules[normalize(name)] = symbols
         elif symbols:
             ambiguous[normalize(name)] = sorted(symbols)
-    result = trace(snapshot, db, modules, aliases)
+    result = trace(snapshot, db, modules, aliases, read_excluded(args.exclude) if args.exclude else None)
     result.ambiguous = ambiguous
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "hardware.config").write_text(fragment_text(result), encoding="utf-8")
@@ -108,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     gen.add_argument("--ssh-cmd", default="ssh", help="ssh client command")
     gen.add_argument("--tree", type=Path, required=True)
     gen.add_argument("--aliases", type=Path, help="modules.alias, to find drivers for unbound devices")
+    gen.add_argument("--exclude", type=Path, help="symbols never to enable, one per line")
     gen.add_argument("--arch", default="x86")
     gen.add_argument("--out", type=Path, required=True)
     gen.set_defaults(run=_generate)
@@ -116,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     trace_cmd.add_argument("--tree", type=Path, required=True)
     trace_cmd.add_argument("--snapshot", type=Path, required=True)
     trace_cmd.add_argument("--aliases", type=Path, help="modules.alias, to find drivers for unbound devices")
+    trace_cmd.add_argument("--exclude", type=Path, help="symbols never to enable, one per line")
     trace_cmd.add_argument("--arch", default="x86")
     trace_cmd.add_argument("--out", type=Path, required=True)
     trace_cmd.set_defaults(run=_generate, current=False, ssh=None, ssh_cmd="ssh")

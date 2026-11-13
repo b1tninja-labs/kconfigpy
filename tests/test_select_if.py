@@ -46,6 +46,10 @@ config EXTRA
 
 config TINY
 \tbool "tiny"
+
+config NEEDS_BIG
+\tbool "needs big"
+\tdepends on !TINY
 """
 
 
@@ -70,7 +74,7 @@ def test_unmet_condition_is_not_followed_and_says_why(tree: Path) -> None:
     assert "ALWAYS" in solution.enabled
     assert "WHEN_NET" not in solution.enabled and "CHAINED" not in solution.enabled
     assert solution.conditional["WHEN_NET"] == (
-        "selected by OWNER only if NET, which is not met by the requested options"
+        "selected by OWNER only if NET, which the requested options do not decide"
     )
 
 
@@ -94,16 +98,27 @@ def test_every_term_of_the_condition_must_hold(tree: Path) -> None:
     assert solver.solution.enabled["BOTH"] == "selected by OWNER if NET && EXTRA"
 
 
-def test_negated_condition_is_judged_against_everything_requested(tree: Path) -> None:
-    alone = Solver(read_kconfig(tree))
-    alone.want("OWNER", "test")
-    assert alone.solution.enabled["UNLESS_TINY"] == "selected by OWNER if !TINY"
+def test_absence_from_the_request_does_not_prove_an_option_is_off(tree: Path) -> None:
+    # TINY is never mentioned. A default or another fragment may still turn it on, so "!TINY" is undecided.
+    solver = Solver(read_kconfig(tree))
+    solver.want("OWNER", "test")
+    assert "UNLESS_TINY" not in solver.solution.enabled
+    assert solver.solution.conditional["UNLESS_TINY"] == (
+        "selected by OWNER only if !TINY, which the requested options do not decide"
+    )
 
-    with_tiny = Solver(read_kconfig(tree))
-    with_tiny.want("OWNER", "test")
-    with_tiny.want("TINY", "test")  # requested after the owner: the select must still not fire
-    assert "UNLESS_TINY" not in with_tiny.solution.enabled
-    assert "which is not met" in with_tiny.solution.conditional["UNLESS_TINY"]
+
+def test_negated_condition_holds_only_when_the_request_requires_the_option_off(tree: Path) -> None:
+    off = Solver(read_kconfig(tree))
+    off.want("OWNER", "test")
+    off.want("NEEDS_BIG", "test")  # depends on !TINY, so the request itself keeps TINY off
+    assert off.solution.enabled["UNLESS_TINY"] == "selected by OWNER if !TINY"
+
+    on = Solver(read_kconfig(tree))
+    on.want("OWNER", "test")
+    on.want("TINY", "test")  # requested after the owner: the select must still not fire
+    assert "UNLESS_TINY" not in on.solution.enabled
+    assert on.solution.conditional["UNLESS_TINY"].endswith("which the requested options rule out")
 
 
 def test_condition_that_cannot_be_evaluated_is_not_followed_and_is_reported(tree: Path) -> None:
@@ -120,7 +135,7 @@ def test_fragment_leaves_it_out_and_the_report_names_it(tree: Path) -> None:
     assert "CONFIG_ALWAYS=y" in fragment
     assert "CONFIG_WHEN_NET" not in fragment
     report = report_text(result)
-    assert "## Conditional select not followed (3)" in report
+    assert "## Conditional select not followed (4)" in report
     assert "- `WHEN_NET`: selected by OWNER only if NET" in report
 
 
