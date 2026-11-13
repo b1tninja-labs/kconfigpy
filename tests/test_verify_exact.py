@@ -15,7 +15,7 @@ def _verify(requested: dict[str, str], resolved: dict[str, str]):
 def test_nr_cpus_1_is_not_accepted_for_nr_cpus_128() -> None:
     outcome = _verify({"NR_CPUS": "1"}, {"NR_CPUS": "128"})
     assert outcome.kept == []
-    assert "NR_CPUS" in outcome.dropped
+    assert "NR_CPUS" in outcome.changed
 
 
 def test_identical_value_is_kept() -> None:
@@ -23,7 +23,7 @@ def test_identical_value_is_kept() -> None:
 
 
 def test_module_is_not_built_in() -> None:
-    assert _verify({"DRV": "y"}, {"DRV": "m"}).dropped.keys() == {"DRV"}
+    assert _verify({"DRV": "y"}, {"DRV": "m"}).changed.keys() == {"DRV"}
 
 
 def test_value_is_not_prefix_or_substring_matched() -> None:
@@ -38,7 +38,7 @@ def test_disable_line_is_exact(tmp_path: Path) -> None:
     assert requested == {"A": "n", "B": "n", "C": "y"}
     outcome = _verify(requested, {"A": "y", "C": "y"})
     assert outcome.kept == ["B", "C"]
-    assert list(outcome.dropped) == ["A"]
+    assert list(outcome.changed) == ["A"]
 
 
 def test_explicit_not_set_in_resolved_config_meets_a_disable(tmp_path: Path) -> None:
