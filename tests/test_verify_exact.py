@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from kconfigpy.kconfig import KconfigDb
-from kconfigpy.verify import read_exact, verify
+from kconfigpy.verify import Verification, read_exact, verify
 
 
-def _verify(requested: dict[str, str], resolved: dict[str, str]):
+def _verify(requested: dict[str, str], resolved: dict[str, str]) -> Verification:
     return verify(requested, resolved, KconfigDb())
 
 

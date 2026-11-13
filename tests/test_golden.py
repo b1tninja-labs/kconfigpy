@@ -35,9 +35,10 @@ UPDATE = _load_tool()
 
 
 def _fixture_args() -> argparse.Namespace:
-    return UPDATE.parse_args(
+    args: argparse.Namespace = UPDATE.parse_args(
         ["--snapshot", str(SNAPSHOT), "--tree", str(TREE), "--exclude", str(EXCLUDE), "--out", "unused"]
     )
+    return args
 
 
 def golden_diff(expected: str, actual: str, name: str) -> str:
