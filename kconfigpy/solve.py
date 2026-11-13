@@ -23,6 +23,9 @@ class Solution:
     excluded: dict[str, str] = field(default_factory=dict)  # symbol on the caller's exclude list -> who wanted it
     forbidden: dict[str, str] = field(default_factory=dict)  # symbol -> why it must stay off
     assumed: dict[str, str] = field(default_factory=dict)  # promptless symbol -> who needs it
+    # promptless symbol -> its first visible default, when the request decides which one that is
+    default_on: dict[str, str] = field(default_factory=dict)
+    default_off: dict[str, str] = field(default_factory=dict)
     unknown: dict[str, str] = field(default_factory=dict)  # unevaluated term -> who needs it
     conflicts: list[str] = field(default_factory=list)
     undefined: dict[str, str] = field(default_factory=dict)
@@ -166,6 +169,7 @@ class Solver:
                         self.select(target, owner, f" if {show(condition)}")
                         changed = True
         solution = self._solution
+        self.predict_defaults()
         solution.conditional.clear()
         for owner, target, condition in self._pending:
             if target in solution.enabled or target in solution.forced or target in solution.assumed:
@@ -179,6 +183,48 @@ class Solver:
             reason = f"selected by {owner} only if {show(condition)}, which {verdict}"
             previous = solution.conditional.get(target)
             solution.conditional[target] = f"{previous}; {reason}" if previous else reason
+
+    def predict_defaults(self) -> None:
+        """Say whether each promptless symbol is on or off by default, where the request decides it.
+
+        Only ``default`` and ``select`` give such a symbol a value, so its first visible default is its value
+        unless a select raises it. A condition the request does not decide leaves the symbol unpredicted.
+        """
+        solution = self._solution
+        solution.default_on.clear()
+        solution.default_off.clear()
+        for name in solution.assumed:
+            verdict, why = self.default_of(name)
+            if verdict is True:
+                solution.default_on[name] = why
+            elif verdict is False:
+                solution.default_off[name] = why
+
+    def default_of(self, name: str) -> tuple[bool | None, str]:
+        """The value the defaults give a symbol: True, False, or None when the request does not decide it."""
+        for definition in self.db.definitions.get(name, []):
+            visible = self.holds_all(list(definition.all_deps()))
+            if visible is False:
+                continue
+            for value, condition in definition.defaults:
+                applies = visible if condition is None else self.holds_all([condition, *definition.all_deps()])
+                text = f"default {show(value)}" + (f" if {show(condition)}" if condition is not None else "")
+                if applies is False:
+                    continue
+                if applies is None:
+                    return None, f"{text} is not decided by the requested options"
+                return self.holds(value), f"first visible {text}"
+        return False, "no default applies"
+
+    def holds_all(self, exprs: list[Expr]) -> bool | None:
+        result: bool | None = True
+        for expr in exprs:
+            held = self.holds(expr)
+            if held is False:
+                return False
+            if held is None:
+                result = None
+        return result
 
     def select(self, target: str, owner: str, condition: str = "") -> None:
         """Turn on a selected symbol whatever its own dependencies say (Kconfig only warns).

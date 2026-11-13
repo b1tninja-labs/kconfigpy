@@ -179,6 +179,7 @@ class Definition:
     deps: list[Expr] = field(default_factory=list)
     selects: list[str] = field(default_factory=list)  # unconditional: select X
     select_if: list[tuple[str, Expr]] = field(default_factory=list)  # select X if <expr>
+    defaults: list[tuple[Expr, Expr | None]] = field(default_factory=list)  # default VALUE [if COND], in file order
     blocks: list[_Block] = field(default_factory=list)
     prompt_condition: Expr | None = None
     choice: Choice | None = None  # the choice this symbol is a member of
@@ -360,6 +361,7 @@ class _Parser:
             target.kind = word.removeprefix("def_")
             if word.startswith("def_"):
                 target.has_default = True
+                target.defaults.append(_default(rest))
                 return
             prompt, condition = _split_condition(rest)
             if prompt:
@@ -373,12 +375,26 @@ class _Parser:
                 target.prompt_condition = parse_expr(condition)
         elif word == "default":
             target.has_default = True
+            target.defaults.append(_default(rest))
         elif word == "select":
             symbol, condition = _split_condition(rest)
             if condition is None:
                 target.selects.append(symbol)
             else:
                 target.select_if.append((symbol, parse_expr(condition)))
+
+
+def _default(rest: str) -> tuple[Expr, Expr | None]:
+    """``VALUE [if COND]``: the value is an expression of its own, so the split is on the top-level ``if``."""
+    depth = 0
+    for token in _TOKEN.finditer(rest):
+        if token.group() == "(":
+            depth += 1
+        elif token.group() == ")":
+            depth -= 1
+        elif token.group() == "if" and depth == 0:
+            return parse_expr(rest[: token.start()]), parse_expr(rest[token.end() :])
+    return parse_expr(rest), None
 
 
 def _split_tab(line: str) -> tuple[str, str, str]:

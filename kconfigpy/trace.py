@@ -123,6 +123,18 @@ def fragment_text(result: Trace) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _with_defaults(solution: Solution) -> dict[str, str]:
+    """Each promptless symbol with who needs it, and what its defaults say where the request decides that."""
+    out = {}
+    for name, why in solution.assumed.items():
+        if name in solution.default_on:
+            why = f"{why}; predicted on: {solution.default_on[name]}"
+        elif name in solution.default_off:
+            why = f"{why}; predicted off: {solution.default_off[name]}"
+        out[name] = why
+    return out
+
+
 def report_text(result: Trace) -> str:
     out = ["# Hardware trace", ""]
     for status in ("bound", "available", "unclaimed"):
@@ -141,7 +153,7 @@ def report_text(result: Trace) -> str:
         ("Excluded on request", solution.excluded),
         ("Conditional select not followed", solution.conditional),
         ("Must stay off", solution.forbidden),
-        ("Left to the kernel (no prompt)", solution.assumed),
+        ("Left to the kernel (no prompt)", _with_defaults(solution)),
         ("Not evaluated", solution.unknown),
         ("Undefined symbols", solution.undefined),
     ]
