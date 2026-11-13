@@ -1,0 +1,2 @@
+# Synthetic exclude list for the golden test: the serial port stays out even though its device is bound.
+ACME_SERIAL
