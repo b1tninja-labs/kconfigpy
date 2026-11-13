@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from kconfigpy.kbuild import module_map
-from kconfigpy.surface import read_banned, report_text, surface
+from kconfigpy.surface import read_banned, read_exclude, report_text, requested_by, surface
 from kconfigpy.verify import read_config
 
 
@@ -78,3 +78,36 @@ def test_report_names_banned_options_and_unknown_mappings() -> None:
     assert "## Banned options enabled\n- `KEXEC=y`\n" in text
     assert "- `DRV`: my_drv\n" in text
     assert "## Enabled options with no module mapping (unknown, not guessed)\n- `KEXEC`\n" in text
+
+
+def test_option_the_fragment_never_named_is_reported_from_the_resolved_config(tmp_path: Path) -> None:
+    fragment = write(tmp_path / "fragment.config", "CONFIG_PCI=y\nCONFIG_KEXEC=n\n")
+    resolved = write(
+        tmp_path / "kernel.config", "CONFIG_PCI=y\nCONFIG_KEXEC=n\nCONFIG_FB_DEFAULT_ON=y\nCONFIG_NET_IMPLIED=m\n"
+    )
+    result = surface(read_config(resolved), {}, [], requested=requested_by(read_config(fragment)))
+    assert result.unrequested == ["FB_DEFAULT_ON", "NET_IMPLIED"]
+    assert "KEXEC" not in result.enabled
+
+
+def test_unrequested_stays_empty_without_a_fragment() -> None:
+    assert surface({"PCI": "y"}, {}, []).unrequested == []
+
+
+def test_requested_by_counts_only_options_asked_on() -> None:
+    assert requested_by({"PCI": "y", "KEXEC": "n", "SCTP": "m"}) == {"PCI", "SCTP"}
+
+
+def test_exclude_list_enabled_option_is_reported(tmp_path: Path) -> None:
+    excluded = read_exclude(write(tmp_path / "exclude.list", "# removed from the fragment\nMTD\nINPUT\n"))
+    assert excluded == ["MTD", "INPUT"]
+    result = surface({"MTD": "y", "INPUT": "n", "PCI": "y"}, {}, [], excluded=excluded)
+    assert result.excluded == {"MTD": "y"}
+    assert "- `MTD=y`" in report_text(result)
+
+
+def test_numeric_and_string_options_are_set_but_not_features() -> None:
+    result = surface({"GCC_VERSION": "160201", "LOCALVERSION": '""', "PCI": "y"}, {}, ["LOCALVERSION"])
+    assert result.enabled == {"PCI": "y"}
+    assert result.unmapped == ["PCI"]
+    assert result.banned == {"LOCALVERSION": '""'}
