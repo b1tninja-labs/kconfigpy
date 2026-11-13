@@ -9,6 +9,7 @@ from pathlib import Path
 from kconfigpy.kconfig import And, Const, Expr, KconfigDb, Not, Or, Sym, Unknown
 
 _SET = re.compile(r"^CONFIG_([A-Za-z0-9_]+)=(.*)$")
+_UNSET = re.compile(r"^# CONFIG_([A-Za-z0-9_]+) is not set$")
 
 
 def read_config(path: Path) -> dict[str, str]:
@@ -18,6 +19,20 @@ def read_config(path: Path) -> dict[str, str]:
         match = _SET.match(line)
         if match is not None:
             values[match.group(1)] = match.group(2)
+    return values
+
+
+def read_exact(path: Path) -> dict[str, str]:
+    """Like :func:`read_config`, but a ``# CONFIG_X is not set`` line is the explicit value ``n``."""
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = _SET.match(line)
+        if match is not None:
+            values[match.group(1)] = match.group(2)
+            continue
+        unset = _UNSET.match(line)
+        if unset is not None:
+            values[unset.group(1)] = "n"
     return values
 
 
@@ -66,8 +81,21 @@ def verify(requested: dict[str, str], resolved: dict[str, str], db: KconfigDb) -
     kept: list[str] = []
     dropped: dict[str, list[str]] = {}
     for symbol in sorted(requested):
+        want = requested[symbol]
+        if want == "n":
+            # A disable line is met by an explicit "not set" or by absence, never by any value.
+            got = resolved.get(symbol, "n")
+            if got == "n":
+                kept.append(symbol)
+            else:
+                dropped[symbol] = [f"resolved as {got}, requested n"]
+            continue
         if symbol in resolved:
-            kept.append(symbol)
+            got = resolved[symbol]
+            if got == want:
+                kept.append(symbol)
+            else:
+                dropped[symbol] = [f"resolved as {got}, requested {want}"]
             continue
         definition = db.preferred(symbol)
         failing = (
