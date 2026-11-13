@@ -150,9 +150,22 @@ def parse_expr(text: str) -> Expr:
 
 
 @dataclass
+class Choice:
+    """A ``choice``: exactly one member is on (or none, when it is ``optional``)."""
+
+    file: str
+    line: int
+    name: str = ""
+    optional: bool = False
+    members: list[str] = field(default_factory=list)
+    defaults: list[tuple[str, Expr | None]] = field(default_factory=list)  # default MEMBER [if COND]
+
+
+@dataclass
 class _Block:
     deps: list[Expr] = field(default_factory=list)
     kind: str = "if"  # if, menu, choice or comment: which ``end`` keyword closes it
+    choice: Choice | None = None
 
 
 @dataclass
@@ -168,6 +181,7 @@ class Definition:
     select_if: list[tuple[str, Expr]] = field(default_factory=list)  # select X if <expr>
     blocks: list[_Block] = field(default_factory=list)
     prompt_condition: Expr | None = None
+    choice: Choice | None = None  # the choice this symbol is a member of
 
     def all_deps(self) -> Iterator[Expr]:
         yield from self.deps
@@ -195,6 +209,7 @@ class KconfigDb:
     definitions: dict[str, list[Definition]] = field(default_factory=dict)
     missing_sources: list[str] = field(default_factory=list)
     errors: list[ParseError] = field(default_factory=list)
+    choices: list[Choice] = field(default_factory=list)
 
     def has_prompt(self, name: str) -> bool:
         return any(d.has_prompt for d in self.definitions.get(name, []))
@@ -283,6 +298,9 @@ class _Parser:
                 self.target = None
                 return
             definition = Definition(rest.split()[0], relative, number, blocks=list(self.blocks))
+            definition.choice = next((b.choice for b in reversed(self.blocks) if b.choice is not None), None)
+            if definition.choice is not None:
+                definition.choice.members.append(definition.name)
             self.db.definitions.setdefault(definition.name, []).append(definition)
             self.target = definition
         elif word in _SOURCES:
@@ -298,6 +316,9 @@ class _Parser:
             self.parse_file(name)
         elif word in {"menu", "choice"}:
             block = _Block(kind=word)
+            if word == "choice":
+                block.choice = Choice(relative, number, rest.split()[0] if rest.split() else "")
+                self.db.choices.append(block.choice)
             self.blocks.append(block)
             self.target = block
         elif word == "if":
@@ -320,8 +341,18 @@ class _Parser:
                 self.target.deps.append(parse_expr(rest.removeprefix("on").strip()))
             elif isinstance(self.target, Definition):
                 self.attribute(self.target, word, rest)
+            elif self.target.choice is not None:
+                self.choice_attribute(self.target.choice, word, rest)
         elif not (word.startswith("$(") or _MACRO.match(line)):
             self.error(*where, "unknown statement")
+
+    @staticmethod
+    def choice_attribute(choice: Choice, word: str, rest: str) -> None:
+        if word == "optional":
+            choice.optional = True
+        elif word == "default":
+            member, condition = _split_condition(rest)
+            choice.defaults.append((member, parse_expr(condition) if condition else None))
 
     @staticmethod
     def attribute(target: Definition, word: str, rest: str) -> None:

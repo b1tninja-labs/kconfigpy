@@ -91,10 +91,32 @@ class Solver:
                 return None
             self._solution.assumed[name] = why
         else:
+            rival = self.choice_rival(definition, name)
+            if rival is not None:
+                held = self._solution.enabled.get(rival) or self._solution.forced[rival]
+                choice = definition.choice
+                where = f"{choice.file}:{choice.line}" if choice is not None else "?"
+                conflict = (
+                    f"{name} and {rival} are both members of the choice at {where}, which allows exactly one: "
+                    f"{name} is wanted ({why}); {rival} is on ({held})"
+                )
+                if conflict not in self._solution.conflicts:
+                    self._solution.conflicts.append(conflict)
+                return None
             self._solution.enabled[name] = why
         for dependency in list(definition.all_deps()):
             self.satisfy(dependency, name)
         return definition
+
+    def choice_rival(self, definition: Definition, name: str) -> str | None:
+        """Another member of the same choice that is already on, if there is one."""
+        if definition.choice is None:
+            return None
+        solution = self._solution
+        return next(
+            (m for m in definition.choice.members if m != name and (m in solution.enabled or m in solution.forced)),
+            None,
+        )
 
     def follow_selects(self, definition: Definition, owner: str) -> None:
         for target in definition.selects:
