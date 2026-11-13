@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from kconfigpy.fragments import FragmentLine, diff_fragment, minimal_defconfig, render
+from kconfigpy.fragments import FragmentLine, diff_fragment, close_fragment, minimal_defconfig, render
 from kconfigpy.kconfig import read_kconfig
 from kconfigpy.verify import read_config
 
@@ -111,7 +111,7 @@ def docker_ready() -> bool:
     if shutil.which("docker") is None:
         return False
     try:
-        return subprocess.run(["docker", "info"], capture_output=True, timeout=10).returncode == 0
+        return subprocess.run(["docker", "info"], capture_output=True, timeout=30).returncode == 0
     except subprocess.TimeoutExpired:
         return False
 
@@ -144,5 +144,29 @@ def test_minimal_defconfig_expands_to_the_same_config_under_the_kernels_conf(tmp
         return read_config(tmp_path / out)
 
     baseline = conf(None, "baseline.config")
-    (tmp_path / "frag").write_text(render(minimal_defconfig(full, baseline)), encoding="utf-8")
-    assert conf("frag", "expanded.config") == full
+    lines = minimal_defconfig(full, baseline)
+    first = len(lines)
+    for _ in range(4):
+        (tmp_path / "frag").write_text(render(lines), encoding="utf-8")
+        expanded = conf("frag", "expanded.config")
+        closed = close_fragment(full, lines, expanded)
+        if len(closed) == len(lines):
+            break
+        lines = closed
+    assert expanded == full
+    assert first < len(lines) < len(full)
+
+
+def test_minimal_leaves_out_a_value_that_has_no_not_set_form() -> None:
+    assert minimal_defconfig({}, {"COUNT": "8", "FLAG": "y"}) == [
+        FragmentLine("FLAG", None, "off here, the kernel's own default is y")
+    ]
+
+
+def test_close_fragment_turns_off_what_conf_turned_on_and_restores_what_it_lost() -> None:
+    full = {"KEEP": "y", "LOST": "y"}
+    lines = [FragmentLine("KEEP", "y", "kept")]
+    expanded = {"KEEP": "y", "SURPRISE": "y", "TEXT": "abc"}
+    closed = close_fragment(full, lines, expanded)
+    assert [line.text for line in closed] == ["CONFIG_KEEP=y", "CONFIG_LOST=y", "# CONFIG_SURPRISE is not set"]
+    assert close_fragment(full, closed, {"KEEP": "y", "LOST": "y"}) == closed

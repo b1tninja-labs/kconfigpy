@@ -85,8 +85,13 @@ def minimal_defconfig(
     What it does not know: ``savedefconfig`` compares with the default *in the context of the full
     config*, so an option that is on only because a kept option selects it, or whose default depends on a
     kept option, is dropped by ``savedefconfig`` but kept here when ``baseline`` lacks it and it has a
-    prompt. The result then resolves correctly but is longer than ``savedefconfig``'s. It is the
-    kernel's ``conf`` that proves a result: expand it again and compare with ``full``.
+    prompt. The reverse also happens: an option that ``full`` leaves off but whose default turns on once a
+    kept option satisfies its dependencies is absent from both ``full`` and ``baseline``, so nothing here
+    says to turn it off. ``close_fragment`` repairs that from one run of ``conf``. An option that is an int,
+    hex or string and set in ``baseline`` but absent from ``full`` cannot be written as "not set" and is
+    left out; it is absent because a dependency is off.
+
+    It is the kernel's ``conf`` that proves a result: expand it, and ``close_fragment`` until it matches.
     """
     lines: list[FragmentLine] = []
     for symbol in sorted(full.keys() | baseline.keys()):
@@ -96,9 +101,35 @@ def minimal_defconfig(
         if db is not None and symbol in db.definitions and not db.has_prompt(symbol):
             continue
         if want is None:
+            if base not in ("y", "m"):
+                continue  # an int, hex or string has no "not set" form; it is absent because a dependency is off
             lines.append(FragmentLine(symbol, None, f"off here, the kernel's own default is {base}"))
         elif base is None:
             lines.append(FragmentLine(symbol, want, "set here, off by the kernel's own default"))
         else:
             lines.append(FragmentLine(symbol, want, f"differs from the kernel's own default {base}"))
     return lines
+
+
+def close_fragment(full: dict[str, str], lines: list[FragmentLine], expanded: dict[str, str]) -> list[FragmentLine]:
+    """Add the lines that make ``conf``'s expansion of ``lines`` match ``full``, given that expansion.
+
+    ``expanded`` is the ``.config`` that ``conf`` wrote for ``lines`` as input. An option on in ``expanded``
+    (``y`` or ``m``) and absent from ``full`` is added as ``# CONFIG_X is not set``; an option in ``full``
+    with another value, or absent, in ``expanded`` is added as ``CONFIG_X=v``. Run ``conf`` again on the
+    result and repeat until nothing is added; an empty return of added lines means the fragment is exact.
+    An option that is neither (an int or string that ``expanded`` has and ``full`` lacks) cannot be turned
+    off and is left alone.
+    """
+    have = {line.symbol for line in lines}
+    added: list[FragmentLine] = []
+    for symbol in sorted(full.keys() | expanded.keys()):
+        want, got = full.get(symbol), expanded.get(symbol)
+        if want == got or symbol in have:
+            continue
+        if want is None:
+            if got in ("y", "m"):
+                added.append(FragmentLine(symbol, None, "conf turns it on by default; off in the full config"))
+        else:
+            added.append(FragmentLine(symbol, want, "conf does not reach this value from the fragment"))
+    return sorted([*lines, *added], key=lambda line: line.symbol)
