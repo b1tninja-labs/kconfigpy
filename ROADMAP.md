@@ -23,6 +23,18 @@ if the behaviour broke. `ROADMAP.md` is the source of truth; the GitHub issues a
 | `fwd.diff` | [ ] | forward | Produce a fragment from the diff between a golden config and a build config, with each line's reason carried over | |
 | `fwd.minimal` | [ ] | forward | A split mode that writes a minimal defconfig, keeping only the flags that differ from the kernel's defaults, for version control | |
 
+| `kc.entries` | [x] | kconfig | Read every entry kind the kernel grammar has (`config`, `menuconfig`, `menu`, `if`, `choice`, `source`), with block dependencies inherited by what is inside | `tests/test_kconfig_language.py::test_menu_dependency_is_inherited_until_endmenu` |
+| `kc.expr` | [x] | kconfig | Parse dependency expressions with the kernel's precedence; a term that cannot be evaluated is reported, never guessed | `tests/test_kconfig_language.py::test_what_cannot_be_evaluated_is_unknown_never_guessed` |
+| `kc.census` | [x] | kconfig | `tools/kconfig_census.py` counts what a tree uses and what the reader could not evaluate, so `docs/kconfig-coverage.md` is measured, not estimated | `tests/test_kconfig_census.py::test_scan_counts_statements_and_skips_help_bodies` |
+| `kc.select-if` | [ ] | kconfig | Keep the condition of `select X if <expr>` and follow the select only when it holds (1,348 uses in 6.18.62; today it over-enables, and `verify` cannot see it) | |
+| `kc.choice` | [ ] | kconfig | Model a `choice` as exactly one member on: proposing two members is a conflict with both reasons named, and the choice's `default` is known | |
+| `kc.defaults` | [ ] | kconfig | Record `default` and `def_bool` values with their `if` conditions, first visible one wins, so a promptless symbol is predicted on or off instead of assumed | |
+| `kc.imply` | [ ] | kconfig | Read `imply` and report implied options as likely on, with the implying option as the reason | |
+| `kc.values` | [ ] | kconfig | Carry `int`, `hex` and `string` values from a given `.config`, check `range`, and evaluate `=`, `!=`, `<`, `>`, `<=`, `>=` against them | |
+| `kc.tristate` | [ ] | kconfig | Three-valued evaluation (`n` < `m` < `y`, `&&` as min, `||` as max), the `modules` symbol, `depends on m` and `SYM = m` | |
+| `kc.macro` | [ ] | kconfig | Read macro assignments and expand calls from recorded probe results (the `CC_*` symbols of a `.config`); never run a shell | |
+| `kc.parser-losses` | [ ] | kconfig | Fix three reader faults: an escaped quote ends a constant early, an attribute after `help` on a `menu` or `choice` is dropped, and a statement the grammar rejects is ignored silently | |
+| `kc.conformance` | [ ] | kconfig | Differential test against the kernel's own `conf` on the pinned tree: for a set of requests, the predicted and resolved configurations agree, and the agreement rate is recorded | |
 | `rev.evidence` | [ ] | reverse | Recover evidence from a kernel image: embedded config, kallsyms, `__ksymtab`, `__kcrctab`, vermagic | |
 | `rev.symbols` | [ ] | reverse | Symbol presence: `obj-$(CONFIG_X)` makes a present symbol evidence for its option | |
 | `rev.crc` | [ ] | reverse | CRC sensitivity map: flip one option at a time, record which modversion CRCs change | |

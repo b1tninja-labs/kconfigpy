@@ -6,3 +6,4 @@
 - `snapshot`: export the hardware snapshot of this machine, or of an SSH host. Standard library only; refuses off Linux and on an empty sysfs.
 - `generate`: write the config fragment from a saved snapshot, or from a fresh one with `--current`.
 - `trace` is kept as an alias of `generate --snapshot`.
+- `docs/kconfig-coverage.md`: a construct-by-construct matrix of the Kconfig language against the reader, measured on Linux 6.18.62 with `tools/kconfig_census.py`.

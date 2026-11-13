@@ -56,6 +56,14 @@ Open research questions, each tied to a ROADMAP row:
 - Out-of-tree hardware (`oot.*`): how to report a device with a known out-of-tree driver as such, rather
   than as unclaimed. The first case is Intel QuickAssist on the router.
 
+## Kconfig coverage
+
+How much of the Kconfig language the reader handles is measured, construct by construct, in
+[kconfig-coverage.md](kconfig-coverage.md). In short: structure and dependencies are read almost
+completely (0.3% of terms unevaluated on 6.18.62), and value semantics are not modelled yet. The `kc.*`
+rows in `ROADMAP.md` close those gaps, with `kc.select-if` first because it is the one loss `verify`
+cannot detect, and `kc.conformance` last as the measure of the rest.
+
 ## Risks
 
 - **Mapping gaps:** a driver built another way is listed as unmapped. The tool reports this and does not
