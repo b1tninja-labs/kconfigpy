@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     with tempfile.TemporaryDirectory() as scratch:
         text = regenerate(args, Path(scratch))
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(text, encoding="utf-8")
+    args.out.write_text(text, encoding="utf-8", newline="\n")
     print(f"golden: {len(text.splitlines())} lines written to {args.out}")
     return 0
 
