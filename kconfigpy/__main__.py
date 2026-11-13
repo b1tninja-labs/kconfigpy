@@ -14,16 +14,26 @@ from pathlib import Path
 
 from kconfigpy import snapshot as snapshot_module
 from kconfigpy.kbuild import (
+    ALIAS_FILES,
     BuildArtifactsMissing,
     BuiltinMap,
     builtin_map,
     driver_sources,
     module_aliases,
     module_map,
+    modules_enabled,
     normalize,
 )
 from kconfigpy.kconfig import read_kconfig
-from kconfigpy.trace import fragment_text, read_aliases, read_excluded, read_snapshot, report_text, trace
+from kconfigpy.trace import (
+    fragment_text,
+    read_aliases,
+    read_builtin_modinfo,
+    read_excluded,
+    read_snapshot,
+    report_text,
+    trace,
+)
 from kconfigpy.verify import read_config, verify
 
 
@@ -62,11 +72,19 @@ def _snapshot(args: argparse.Namespace) -> int:
 
 def _built_tree_inputs(built_tree: Path) -> tuple[list[tuple[str, str]], Path]:
     """Aliases and ``.config`` from a build output directory; refuse naming whichever file is missing."""
-    aliases = module_aliases(built_tree)
     config = built_tree / ".config"
     if not config.is_file():
         raise BuildArtifactsMissing(f"{built_tree} has no .config: it says whether CONFIG_MODULES is on")
-    return aliases, config
+    if not modules_enabled(config) and not any((built_tree / name).is_file() for name in ALIAS_FILES):
+        # No depmod runs when modules are off; the kernel build writes the built-in aliases here instead.
+        modinfo = built_tree / "modules.builtin.modinfo"
+        if not modinfo.is_file():
+            raise BuildArtifactsMissing(
+                f"{built_tree} has no modules.builtin.modinfo, modules.alias or modules.builtin.alias: "
+                "aliases come from a finished build, not from the sources"
+            )
+        return read_builtin_modinfo(modinfo), config
+    return module_aliases(built_tree), config
 
 
 def _generate(args: argparse.Namespace) -> int:

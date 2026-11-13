@@ -57,6 +57,21 @@ def read_aliases(path: Path) -> list[tuple[str, str]]:
     return pairs
 
 
+def read_builtin_modinfo(path: Path) -> list[tuple[str, str]]:
+    """Read ``(pattern, driver)`` pairs from ``modules.builtin.modinfo``, the ``name.alias=pattern`` records.
+
+    A build with ``CONFIG_MODULES`` off never runs ``depmod``, so it has no ``modules.alias``; the aliases of
+    what it built in are in this file, which the kernel build itself writes.
+    """
+    pairs = []
+    for record in path.read_bytes().split(b"\0"):
+        name, _, pattern = record.decode("utf-8", errors="replace").partition("=")
+        driver, _, key = name.rpartition(".")
+        if key == "alias" and driver and pattern:
+            pairs.append((pattern, normalize(driver)))
+    return pairs
+
+
 def candidates(modalias: str, aliases: list[tuple[str, str]]) -> list[str]:
     """Modules whose alias patterns claim this device."""
     return sorted({module for pattern, module in aliases if fnmatch.fnmatchcase(modalias, pattern)})

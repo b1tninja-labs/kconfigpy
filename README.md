@@ -36,7 +36,8 @@ and the snapshot module is standard library only, so it runs on a target without
      `modules.alias` and can be combined with it.
    - With `CONFIG_MODULES` off in that `.config`, no module can load, so each driver is mapped to the
      symbol that builds it in, and `report.md` opens with "modules are off: drivers mapped to built-in
-     symbols".
+     symbols". Such a build never runs `depmod`, so it has no `modules.alias`; when none of the alias
+     files exist, the aliases are read from the `modules.builtin.modinfo` the kernel build writes.
    - `--exclude FILE` lists symbols (one per line) that must never be enabled; they appear in the report
      under "Excluded on request" instead of in the fragment. Lines may omit the `CONFIG_` prefix, and
      `#` starts a comment.

@@ -92,3 +92,21 @@ def test_aliases_option_still_works(source: Path, tmp_path: Path) -> None:
     args = ["trace", "--tree", str(source), "--snapshot", str(snap), "--aliases", str(aliases), "--out", str(out)]
     assert main(args) == 0
     assert "`pci:v1d2`: my_drv -> DRV" in (out / "report.md").read_text(encoding="utf-8")
+
+
+def test_modules_off_reads_aliases_from_builtin_modinfo(source: Path, tmp_path: Path) -> None:
+    """A modules-off build has no depmod output; its built-in aliases are in modules.builtin.modinfo."""
+    build = built(tmp_path, "# CONFIG_MODULES is not set\n", aliases=False)
+    (build / "modules.builtin.modinfo").write_bytes(b"my_drv.alias=pci:v1d2*\0my_drv.parm=x:y\0")
+    code, report = run(source, build, tmp_path, UNBOUND)
+    assert code == 0
+    assert "`pci:v1d2`: my_drv -> DRV" in report
+    assert "modules are off: drivers mapped to built-in symbols" in report
+
+
+def test_modules_off_without_any_alias_source_is_refused(
+    source: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, _ = run(source, built(tmp_path, "# CONFIG_MODULES is not set\n", aliases=False), tmp_path, UNBOUND)
+    assert code == 2
+    assert "modules.builtin.modinfo" in capsys.readouterr().err
