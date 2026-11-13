@@ -15,6 +15,7 @@ Measured on the 6.18.62 tree for x86 with `tools/kconfig_census.py` (run it agai
 | Kconfig files read | 1,633 |
 | Symbols (definitions) | 18,456 (18,474) |
 | `source` targets not found | 0 |
+| Statements the grammar rejects (`KconfigDb.errors`) | 0 |
 | Dependency expression terms | 72,310 |
 | Terms the reader could not evaluate | 225 (0.3%) |
 
@@ -94,7 +95,7 @@ This is where the reader stops and `conf` takes over.
 |---|---|---|---|
 | Three values, with `&&` as min and <code>&#124;&#124;</code> as max | gap | Two values. Enough for a kernel with `CONFIG_MODULES` off, which the router's is | `kc.tristate` |
 | `select` forces a lower limit without visiting the target's dependencies | done | A select-forced option with unmet dependencies is reported as forced, not solved | `tests/test_select.py::test_select_forced_option_with_unmet_dependency_is_forced_not_solved` |
-| A symbol with no prompt gets its value only from `default` and `select` | done | It is still listed as left to the kernel; the report adds `predicted on` or `predicted off` with the default that decided it, and says nothing more when the request does not decide the conditions. A later `select` by an option nobody requested can still raise a symbol predicted off | `tests/test_defaults.py::test_default_n_or_no_applicable_default_predicts_off` |
+| A symbol with no prompt gets its value only from `default` and `select` | done | It is still listed as left to the kernel; the report adds `predicted on` or `predicted off`, with the followed select or the default that decided it, and says nothing more when the request does not decide the conditions. A select by an option nobody requested can still raise a symbol predicted off | `tests/test_defaults.py::test_default_n_or_no_applicable_default_predicts_off` |
 | The first visible `default` wins | done | Defaults are tried in file order. One whose condition the request does not decide stops the search: which default wins is open. Its own direct dependencies must hold too | `tests/test_defaults.py::test_an_earlier_default_the_request_does_not_decide_blocks_the_later_one` |
 | `imply` sets a default the user can turn off | done | Reported as likely on, or as not known to take effect with the reason | `tests/test_imply.py::test_an_implied_option_with_no_dependencies_is_likely_on_and_names_its_owner` |
 | Exactly one member of a `choice` is on | done | A second member is a conflict, whether requested or selected | `tests/test_choice.py::test_a_select_of_a_second_member_is_a_conflict_too` |
@@ -145,6 +146,14 @@ fragment may turn it on. So `select X if !Y` is followed only when the request i
 The first version of this fix treated an unmentioned `Y` as off, and on the router it then requested
 `CPU_IDLE_GOV_LADDER` (selected `if !NO_HZ && !NO_HZ_IDLE`) although a role fragment sets `NO_HZ_IDLE=y`.
 Checking the resolved configuration against the previous one is what caught it.
+
+On the router's snapshot against 6.18.62 (measured after `kc.parser-losses`, `kc.choice`, `kc.defaults` and
+`kc.imply`) the fragment and the resolved configuration are byte-identical to the previous ones: 866 resolved
+options, 0 conflicts. The report gained a prediction for each of the 215 promptless symbols it lists: 212 on
+(205 of them because a followed select raises them, 7 from `default y`) and 1 off, and every one of the 212
+is `=y` in the resolved `.config`. One `imply` is listed as not known to take effect. A first version
+predicted 205 selected symbols off because it looked only at their defaults; comparing the report with the
+resolved `.config` caught it, and `test_a_followed_select_beats_a_default_n` holds it.
 
 ## Completion
 

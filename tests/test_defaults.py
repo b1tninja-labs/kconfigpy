@@ -13,12 +13,12 @@ from kconfigpy.trace import Device, Snapshot, report_text, trace
 KCONFIG = """\
 config WANTED
 \tbool "wanted"
-\tselect ALWAYS_ON
-\tselect NEVER_ON
-\tselect COND_ON
-\tselect FIRST_WINS
-\tselect SECOND_WINS
-\tselect FROM_SYMBOL
+\tdepends on ALWAYS_ON && NEVER_ON && COND_ON && FIRST_WINS && SECOND_WINS && FROM_SYMBOL
+\tselect SELECTED_DESPITE_N
+
+config SELECTED_DESPITE_N
+\tbool
+\tdefault n
 
 config ALWAYS_ON
 \tdef_bool y
@@ -99,6 +99,12 @@ def test_default_n_or_no_applicable_default_predicts_off(db: KconfigDb) -> None:
     assert solution.default_off["NEVER_ON"] == "first visible default n"
 
 
+def test_a_followed_select_beats_a_default_n(db: KconfigDb) -> None:
+    solution = _solve(db).solution
+    assert solution.default_on["SELECTED_DESPITE_N"] == "selected by WANTED"
+    assert "SELECTED_DESPITE_N" not in solution.default_off
+
+
 def test_a_condition_the_request_does_not_decide_leaves_the_symbol_unpredicted(db: KconfigDb) -> None:
     solution = _solve(db).solution
     assert "COND_ON" in solution.assumed
@@ -140,6 +146,7 @@ def test_the_report_says_what_the_defaults_predict(db: KconfigDb) -> None:
     device = Device("pci/0", "pci:v1d2", "drv", "drv")
     result = trace(Snapshot([device]), db, {"drv": {"WANTED"}}, [])
     report = report_text(result)
-    assert "- `ALWAYS_ON`: selected by WANTED; predicted on: first visible default y" in report
-    assert "- `NEVER_ON`: selected by WANTED; predicted off: first visible default n" in report
-    assert "- `COND_ON`: selected by WANTED\n" in report
+    assert "- `ALWAYS_ON`: dependency of WANTED; predicted on: first visible default y" in report
+    assert "- `NEVER_ON`: dependency of WANTED; predicted off: first visible default n" in report
+    assert "- `COND_ON`: dependency of WANTED\n" in report
+    assert "- `SELECTED_DESPITE_N`: selected by WANTED; predicted on: selected by WANTED" in report

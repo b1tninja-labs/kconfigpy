@@ -39,6 +39,7 @@ class Solver:
         self.db = db
         self._solution = Solution()
         self._pending: list[tuple[str, str, Expr]] = []  # (owner, target, condition) not yet followed
+        self._selected_by: dict[str, str] = {}  # symbol -> the first followed select that turned it on
         self._implies: list[tuple[str, str, Expr | None]] = []  # (owner, target, condition) of every imply seen
         self._excluded: dict[str, str] = {}  # symbol -> why the caller excludes it
 
@@ -237,6 +238,9 @@ class Solver:
         solution.default_on.clear()
         solution.default_off.clear()
         for name in solution.assumed:
+            if name in self._selected_by:  # a followed select raises it whatever its defaults say
+                solution.default_on[name] = f"selected by {self._selected_by[name]}"
+                continue
             verdict, why = self.default_of(name)
             if verdict is True:
                 solution.default_on[name] = why
@@ -276,6 +280,7 @@ class Solver:
         the fragment and listed as forced, and verify has the final say.
         """
         why = f"selected by {owner}{condition}"
+        self._selected_by.setdefault(target, f"{owner}{condition}")
         before = Counter(self.problems())
         definition = self.enable(target, why)
         if definition is None:
