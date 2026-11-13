@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from kconfigpy.kconfig import KconfigDb
+
 
 @dataclass(frozen=True)
 class FragmentLine:
@@ -60,28 +62,38 @@ def diff_fragment(golden: dict[str, str], build: dict[str, str]) -> list[Fragmen
     return lines
 
 
-def minimal_defconfig(full: dict[str, str], baseline: dict[str, str]) -> list[FragmentLine]:
-    """Keep only the options of ``full`` that differ from ``baseline``.
+def minimal_defconfig(
+    full: dict[str, str], baseline: dict[str, str], db: KconfigDb | None = None
+) -> list[FragmentLine]:
+    """Keep only the options of ``full`` that differ from ``baseline``, as ``make savedefconfig`` does.
 
-    ``full`` is a complete resolved ``.config``. ``baseline`` is what the kernel resolves on its own with no
-    fragment at all, that is the ``.config`` that ``conf`` writes for an empty input (``make alldefconfig``).
-    Producing it needs the kernel's ``conf``, so the caller supplies it; this function never evaluates a
-    ``default``, ``select`` or ``depends on`` itself.
+    ``make savedefconfig`` (``conf_write_defconfig``) writes a symbol only when it passes two tests: the
+    user can change it (it has a visible prompt), and its value is not the default that ``conf`` computes
+    for it in the resolved configuration. kconfgen's split mode applies the same two tests. This function
+    applies them with what it can know:
 
-    "Minimal" therefore means: no line repeats the baseline, and ``baseline`` plus the lines reproduces
-    ``full`` exactly, one option at a time. An option set in ``full`` with another value or absent from
-    ``baseline`` is written as ``CONFIG_X=v``; an option set in ``baseline`` and off in ``full`` is written
-    as ``# CONFIG_X is not set``.
+    - the default is taken from ``baseline``, the ``.config`` that ``conf`` writes for an empty input
+      (``make alldefconfig``). The caller supplies it because producing it needs the kernel's ``conf``;
+      this function never evaluates a ``default``, ``select`` or ``depends on`` itself;
+    - when ``db`` is given, an option the Kconfig tree defines without any prompt is dropped, because
+      ``conf`` derives it and the user cannot set it. An option ``db`` does not define is kept, never
+      guessed away.
 
-    What it does not know: an option that ``conf`` would turn on anyway because a *kept* option selects it
-    or its default depends on a kept option is still written, since that needs the Kconfig graph and a
-    fixed point. The result is a correct defconfig that can be longer than ``make savedefconfig`` writes,
-    never one that resolves differently. Run ``conf`` over the result and compare with ``full`` to prove it.
+    An option set in ``full`` with another value or absent from ``baseline`` is written as ``CONFIG_X=v``;
+    one set in ``baseline`` and off in ``full`` as ``# CONFIG_X is not set``. Lines are sorted by symbol.
+
+    What it does not know: ``savedefconfig`` compares with the default *in the context of the full
+    config*, so an option that is on only because a kept option selects it, or whose default depends on a
+    kept option, is dropped by ``savedefconfig`` but kept here when ``baseline`` lacks it and it has a
+    prompt. The result then resolves correctly but is longer than ``savedefconfig``'s. It is the
+    kernel's ``conf`` that proves a result: expand it again and compare with ``full``.
     """
     lines: list[FragmentLine] = []
     for symbol in sorted(full.keys() | baseline.keys()):
         want, base = full.get(symbol), baseline.get(symbol)
         if want == base:
+            continue
+        if db is not None and symbol in db.definitions and not db.has_prompt(symbol):
             continue
         if want is None:
             lines.append(FragmentLine(symbol, None, f"off here, the kernel's own default is {base}"))

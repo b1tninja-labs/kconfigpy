@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
+
 from kconfigpy.fragments import FragmentLine, diff_fragment, minimal_defconfig, render
+from kconfigpy.kconfig import read_kconfig
 from kconfigpy.verify import read_config
 
 GOLDEN = """\
@@ -86,3 +91,58 @@ def test_minimal_plus_baseline_reproduces_the_full_config() -> None:
 
 def test_minimal_of_a_config_equal_to_its_baseline_is_empty() -> None:
     assert minimal_defconfig({"A": "y"}, {"A": "y"}) == []
+
+
+def test_minimal_drops_an_option_the_kernel_derives_but_keeps_an_unknown_one(tmp_path: Path) -> None:
+    (tmp_path / "Kconfig").write_text(
+        'config USER_OPT\n\tbool "user"\n\nconfig DERIVED\n\tbool\n\tdefault y\n', encoding="utf-8"
+    )
+    db = read_kconfig(tmp_path)
+    full = {"USER_OPT": "y", "DERIVED": "y", "NOT_IN_TREE": "y"}
+    assert [line.symbol for line in minimal_defconfig(full, {}, db)] == ["NOT_IN_TREE", "USER_OPT"]
+    assert [line.symbol for line in minimal_defconfig(full, {})] == ["DERIVED", "NOT_IN_TREE", "USER_OPT"]
+
+
+KERNEL_CONFIG = Path(r"D:\code\aws\router\firmware\out\kernel.config")
+TREE = "/work/src/linux-6.18.62"
+
+
+def docker_ready() -> bool:
+    if shutil.which("docker") is None:
+        return False
+    try:
+        return subprocess.run(["docker", "info"], capture_output=True, timeout=10).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
+
+@pytest.mark.skipif(not (KERNEL_CONFIG.exists() and docker_ready()), reason="needs Docker and the router kernel.config")
+def test_minimal_defconfig_expands_to_the_same_config_under_the_kernels_conf(tmp_path: Path) -> None:
+    """Evidence for `fwd.minimal`: the kernel's own conf expands the minimal fragment back to the input."""
+    full = read_config(KERNEL_CONFIG)
+
+    def conf(allconfig: str | None, out: str) -> dict[str, str]:
+        env = f"KCONFIG_ALLCONFIG=/io/{allconfig} " if allconfig else ""
+        script = f"mkdir -p /tmp/o && {env}make -C {TREE} O=/tmp/o ARCH=x86_64 alldefconfig >/dev/null && cp /tmp/o/.config /io/{out}"
+        subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                "rooter-build:/work:ro",
+                "-v",
+                f"{tmp_path}:/io",
+                "rooter-builder:latest",
+                "sh",
+                "-c",
+                script,
+            ],
+            check=True,
+            timeout=900,
+        )
+        return read_config(tmp_path / out)
+
+    baseline = conf(None, "baseline.config")
+    (tmp_path / "frag").write_text(render(minimal_defconfig(full, baseline)), encoding="utf-8")
+    assert conf("frag", "expanded.config") == full
