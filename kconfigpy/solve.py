@@ -23,6 +23,12 @@ class Solution:
     excluded: dict[str, str] = field(default_factory=dict)  # symbol on the caller's exclude list -> who wanted it
     forbidden: dict[str, str] = field(default_factory=dict)  # symbol -> why it must stay off
     assumed: dict[str, str] = field(default_factory=dict)  # promptless symbol -> who needs it
+    # promptless symbol -> its first visible default, when the request decides which one that is
+    default_on: dict[str, str] = field(default_factory=dict)
+    # symbol -> the option that implies it, when its own dependencies hold: likely on, though not requested
+    implied: dict[str, str] = field(default_factory=dict)
+    implied_off: dict[str, str] = field(default_factory=dict)  # symbol -> why an imply is not known to take effect
+    default_off: dict[str, str] = field(default_factory=dict)
     unknown: dict[str, str] = field(default_factory=dict)  # unevaluated term -> who needs it
     conflicts: list[str] = field(default_factory=list)
     undefined: dict[str, str] = field(default_factory=dict)
@@ -33,6 +39,8 @@ class Solver:
         self.db = db
         self._solution = Solution()
         self._pending: list[tuple[str, str, Expr]] = []  # (owner, target, condition) not yet followed
+        self._selected_by: dict[str, str] = {}  # symbol -> the first followed select that turned it on
+        self._implies: list[tuple[str, str, Expr | None]] = []  # (owner, target, condition) of every imply seen
         self._excluded: dict[str, str] = {}  # symbol -> why the caller excludes it
 
     def exclude(self, name: str, why: str) -> None:
@@ -91,10 +99,32 @@ class Solver:
                 return None
             self._solution.assumed[name] = why
         else:
+            rival = self.choice_rival(definition, name)
+            if rival is not None:
+                held = self._solution.enabled.get(rival) or self._solution.forced[rival]
+                choice = definition.choice
+                where = f"{choice.file}:{choice.line}" if choice is not None else "?"
+                conflict = (
+                    f"{name} and {rival} are both members of the choice at {where}, which allows exactly one: "
+                    f"{name} is wanted ({why}); {rival} is on ({held})"
+                )
+                if conflict not in self._solution.conflicts:
+                    self._solution.conflicts.append(conflict)
+                return None
             self._solution.enabled[name] = why
         for dependency in list(definition.all_deps()):
             self.satisfy(dependency, name)
         return definition
+
+    def choice_rival(self, definition: Definition, name: str) -> str | None:
+        """Another member of the same choice that is already on, if there is one."""
+        if definition.choice is None:
+            return None
+        solution = self._solution
+        return next(
+            (m for m in definition.choice.members if m != name and (m in solution.enabled or m in solution.forced)),
+            None,
+        )
 
     def follow_selects(self, definition: Definition, owner: str) -> None:
         for target in definition.selects:
@@ -102,6 +132,9 @@ class Solver:
         for target, condition in definition.select_if:
             if (owner, target, condition) not in self._pending:
                 self._pending.append((owner, target, condition))
+        for implied, when in definition.implies:
+            if (owner, implied, when) not in self._implies:
+                self._implies.append((owner, implied, when))
 
     def holds(self, expr: Expr) -> bool | None:
         """Whether the request decides this condition: True, False, or None when it does not.
@@ -144,6 +177,8 @@ class Solver:
                         self.select(target, owner, f" if {show(condition)}")
                         changed = True
         solution = self._solution
+        self.predict_defaults()
+        self.judge_implies()
         solution.conditional.clear()
         for owner, target, condition in self._pending:
             if target in solution.enabled or target in solution.forced or target in solution.assumed:
@@ -158,6 +193,86 @@ class Solver:
             previous = solution.conditional.get(target)
             solution.conditional[target] = f"{previous}; {reason}" if previous else reason
 
+    def judge_implies(self) -> None:
+        """Report each implied option as likely on when the request decides that its own dependencies hold.
+
+        ``imply`` is a weak select: it raises the target's default but never past the target's direct
+        dependencies, and the user can still turn it off. So it is never put in the fragment.
+        """
+        solution = self._solution
+        solution.implied.clear()
+        solution.implied_off.clear()
+        for owner, target, condition in self._implies:
+            if target in solution.enabled or target in solution.forced:
+                continue
+            by = f"implied by {owner}" + (f" if {show(condition)}" if condition is not None else "")
+            definition = self.db.preferred(target)
+            applies = True if condition is None else self.holds(condition)
+            if definition is None:
+                problem = "it is not defined"
+            elif target in self._excluded:
+                problem = f"it is excluded ({self._excluded[target]})"
+            elif applies is not True:
+                problem = "the condition " + ("is ruled out" if applies is False else "is not decided by the request")
+            else:
+                deps = list(definition.all_deps())
+                held = self.holds_all(deps)
+                if held is True:
+                    previous = solution.implied.get(target)
+                    solution.implied[target] = f"{previous}; {by}" if previous else f"{by}, and its dependencies hold"
+                    continue
+                shown = ", ".join(show(d) for d in deps)
+                problem = f"its dependencies ({shown}) " + ("do not hold" if held is False else "are not decided")
+            previous = solution.implied_off.get(target)
+            solution.implied_off[target] = f"{previous}; {by}, but {problem}" if previous else f"{by}, but {problem}"
+        for target in solution.implied:
+            solution.implied_off.pop(target, None)
+
+    def predict_defaults(self) -> None:
+        """Say whether each promptless symbol is on or off by default, where the request decides it.
+
+        Only ``default`` and ``select`` give such a symbol a value, so its first visible default is its value
+        unless a select raises it. A condition the request does not decide leaves the symbol unpredicted.
+        """
+        solution = self._solution
+        solution.default_on.clear()
+        solution.default_off.clear()
+        for name in solution.assumed:
+            if name in self._selected_by:  # a followed select raises it whatever its defaults say
+                solution.default_on[name] = f"selected by {self._selected_by[name]}"
+                continue
+            verdict, why = self.default_of(name)
+            if verdict is True:
+                solution.default_on[name] = why
+            elif verdict is False:
+                solution.default_off[name] = why
+
+    def default_of(self, name: str) -> tuple[bool | None, str]:
+        """The value the defaults give a symbol: True, False, or None when the request does not decide it."""
+        for definition in self.db.definitions.get(name, []):
+            visible = self.holds_all(list(definition.all_deps()))
+            if visible is False:
+                continue
+            for value, condition in definition.defaults:
+                applies = visible if condition is None else self.holds_all([condition, *definition.all_deps()])
+                text = f"default {show(value)}" + (f" if {show(condition)}" if condition is not None else "")
+                if applies is False:
+                    continue
+                if applies is None:
+                    return None, f"{text} is not decided by the requested options"
+                return self.holds(value), f"first visible {text}"
+        return False, "no default applies"
+
+    def holds_all(self, exprs: list[Expr]) -> bool | None:
+        result: bool | None = True
+        for expr in exprs:
+            held = self.holds(expr)
+            if held is False:
+                return False
+            if held is None:
+                result = None
+        return result
+
     def select(self, target: str, owner: str, condition: str = "") -> None:
         """Turn on a selected symbol whatever its own dependencies say (Kconfig only warns).
 
@@ -165,6 +280,7 @@ class Solver:
         the fragment and listed as forced, and verify has the final say.
         """
         why = f"selected by {owner}{condition}"
+        self._selected_by.setdefault(target, f"{owner}{condition}")
         before = Counter(self.problems())
         definition = self.enable(target, why)
         if definition is None:

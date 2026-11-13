@@ -15,12 +15,13 @@ Measured on the 6.18.62 tree for x86 with `tools/kconfig_census.py` (run it agai
 | Kconfig files read | 1,633 |
 | Symbols (definitions) | 18,456 (18,474) |
 | `source` targets not found | 0 |
+| Statements the grammar rejects (`KconfigDb.errors`) | 0 |
 | Dependency expression terms | 72,310 |
 | Terms the reader could not evaluate | 225 (0.3%) |
 
-So the structure and the dependency graph are read almost completely. The losses are in **value
-semantics**: the reader records that an option has a `default` or sits in a `choice`, but not when
-those apply. The condition of the 1,348 `select ... if` lines (9% of all selects) is kept and judged
+So the structure and the dependency graph are read almost completely. The losses that remain are in **value
+semantics** (`int`, `hex` and `string` values, three-valued logic, macros). `default`, `imply` and `choice` are
+read with their conditions. The condition of the 1,348 `select ... if` lines (9% of all selects) is kept and judged
 against the request, as far as the request decides it.
 
 kconfigpy never decides what a configuration resolves to. It proposes a fragment, the kernel's `conf`
@@ -45,8 +46,8 @@ Tests are in `tests/test_kconfig_language.py` unless a file is named.
 | The same symbol defined twice | 18 symbols | done | Keeps every definition; prefers the one with a prompt | `test_a_symbol_defined_twice_keeps_both_and_prefers_the_prompted_one` |
 | `menu` / `endmenu` | 337 | done | Its `depends on` applies to every entry inside | `test_menu_dependency_is_inherited_until_endmenu` |
 | `if` / `endif` | 701 | done | Its expression applies to every entry inside | `test_if_block_dependency_is_inherited_until_endif` |
-| `choice` / `endchoice`, as a block | 76 | partial | Its `depends on` applies to the members. A `depends on` written after the choice's `help` is lost | `test_choice_dependency_is_inherited_by_its_members`; `kc.parser-losses` |
-| `choice`, as exclusion | 76 | gap | Members are treated as independent switches | `kc.choice` |
+| `choice` / `endchoice`, as a block | 76 | done | Its `depends on` applies to the members, also when written after the choice's `help` | `test_choice_dependency_is_inherited_by_its_members`; `tests/test_parser_losses.py::test_an_attribute_after_help_on_a_choice_is_kept` |
+| `choice`, as exclusion | 76 | done | The members are recorded with the choice's `default` lines and `optional`. A second member proposed while one is on is a conflict naming both reasons. A tristate choice is treated as a bool one until `kc.tristate` | `tests/test_choice.py::test_two_members_are_a_conflict_naming_both_reasons`; `tests/test_choice.py::test_reader_records_the_members_and_the_default_of_a_choice` |
 | `source` | 1,510 | done | Follows the file once, expanding `$(SRCARCH)`; a missing file is recorded, not ignored | `test_source_expands_srcarch_and_records_a_missing_file` |
 | `comment` | 190 | skipped | Presentation only | |
 | `mainmenu` | 1 | skipped | Presentation only | |
@@ -60,11 +61,11 @@ Tests are in `tests/test_kconfig_language.py` unless a file is named.
 | `prompt`, and a prompt on the type line | 15,445 symbols | done | Marks the symbol settable | same test |
 | `"prompt" if <expr>` | 702 | done | A dependency when nothing else gives the symbol a value | `test_prompt_condition_is_a_dependency_only_when_nothing_defaults` |
 | `depends on` | 17,852 | done | Every one is kept and all must hold | `test_backslash_continuation_joins_one_dependency` |
-| `def_bool`, `def_tristate` | 560 | partial | Type and "has a default". The value and its `if` are dropped | `test_def_bool_sets_the_type_and_a_default_without_a_prompt`; `kc.defaults` |
-| `default` | 4,204 | gap | Only "has a default" is recorded. The value and the 857 `if` conditions are dropped | `kc.defaults` |
+| `def_bool`, `def_tristate` | 560 | done | Type, and a default: the value and its `if` are kept in file order. Only a `y`/`m`/`n` value or a symbol expression is evaluated; an `int`, `hex` or `string` value is not (`kc.values`) | `test_def_bool_sets_the_type_and_a_default_without_a_prompt`; `tests/test_defaults.py::test_reader_keeps_each_default_value_with_its_condition_in_order` |
+| `default` | 4,204 | done | The value and its `if` are kept in file order, split on the top-level `if` so a compound value survives | `tests/test_defaults.py::test_a_value_with_a_compound_expression_is_split_on_the_top_level_if` |
 | `select` | 15,401 | partial | The target is recorded and followed | `test_select_records_the_selected_symbol`, `tests/test_select.py::test_select_chain_is_followed_and_each_option_has_a_reason` |
 | `select ... if <expr>` | 1,348 | done | The condition is kept. The select is followed only when the requested options decide that it holds; otherwise it is listed as not followed, with the condition | `tests/test_select_if.py::test_unmet_condition_is_not_followed_and_says_why` |
-| `imply` | 451 | gap | Not read | `kc.imply` |
+| `imply` | 451 | done | The target and its `if` are kept. An implied option is reported as likely on only when its own direct dependencies and the `if` hold; it is never put in the fragment | `tests/test_imply.py::test_imply_obeys_the_direct_dependencies_of_the_target` |
 | `range` | 120 | gap | Not read | `kc.values` |
 | `modules` | 1 | gap | Not read; `MODULES` is an ordinary symbol to the reader | `kc.tristate` |
 | `visible if` | 19 | skipped | Hides a menu from a person. Symbols inside can still be set | |
@@ -94,10 +95,10 @@ This is where the reader stops and `conf` takes over.
 |---|---|---|---|
 | Three values, with `&&` as min and <code>&#124;&#124;</code> as max | gap | Two values. Enough for a kernel with `CONFIG_MODULES` off, which the router's is | `kc.tristate` |
 | `select` forces a lower limit without visiting the target's dependencies | done | A select-forced option with unmet dependencies is reported as forced, not solved | `tests/test_select.py::test_select_forced_option_with_unmet_dependency_is_forced_not_solved` |
-| A symbol with no prompt gets its value only from `default` and `select` | partial | It is listed as assumed. Whether it really turns on is not predicted | `kc.defaults` |
-| The first visible `default` wins | gap | Not modelled | `kc.defaults` |
-| `imply` sets a default the user can turn off | gap | Not modelled, so the resolved config can contain options the report never mentions | `kc.imply` |
-| Exactly one member of a `choice` is on | gap | Two members can both be proposed. `conf` keeps one and `verify` reports the other as dropped | `kc.choice` |
+| A symbol with no prompt gets its value only from `default` and `select` | done | It is still listed as left to the kernel; the report adds `predicted on` or `predicted off`, with the followed select or the default that decided it, and says nothing more when the request does not decide the conditions. A select by an option nobody requested can still raise a symbol predicted off | `tests/test_defaults.py::test_default_n_or_no_applicable_default_predicts_off` |
+| The first visible `default` wins | done | Defaults are tried in file order. One whose condition the request does not decide stops the search: which default wins is open. Its own direct dependencies must hold too | `tests/test_defaults.py::test_an_earlier_default_the_request_does_not_decide_blocks_the_later_one` |
+| `imply` sets a default the user can turn off | done | Reported as likely on, or as not known to take effect with the reason | `tests/test_imply.py::test_an_implied_option_with_no_dependencies_is_likely_on_and_names_its_owner` |
+| Exactly one member of a `choice` is on | done | A second member is a conflict, whether requested or selected | `tests/test_choice.py::test_a_select_of_a_second_member_is_a_conflict_too` |
 | An `int` or `hex` must be inside its `range` | gap | No values are proposed at all | `kc.values` |
 
 ## Macro language
@@ -120,9 +121,9 @@ instead: `conf` records every probe result as a symbol (`CC_IS_GCC`, `CC_HAS_...
 | `#` comments, blank lines | done | | covered by every test |
 | A trailing backslash joins lines | done | | `test_backslash_continuation_joins_one_dependency` |
 | Help ends at the first line indented less than its first line | done | | `test_help_text_is_skipped_and_the_next_entry_still_parses` |
-| Quoted constants in single or double quotes | partial | A quote escaped with a backslash ends the token early | `kc.parser-losses` |
-| An attribute written after `help` on a `menu` or `choice` | partial | It is dropped | `kc.parser-losses` |
-| A statement the grammar rejects | gap | It is ignored without a message. `conf` would stop | `kc.parser-losses` |
+| Quoted constants in single or double quotes | done | A backslash-escaped quote stays inside the constant | `tests/test_parser_losses.py::test_an_escaped_quote_does_not_end_a_constant_early` |
+| An attribute written after `help` on a `menu` or `choice` | done | It is kept | `tests/test_parser_losses.py::test_an_attribute_after_help_on_a_menu_is_kept` |
+| A statement the grammar rejects | done | Reported in `KconfigDb.errors` with file, line and text; reading goes on. Macro assignments and `$(call)` lines are not errors | `tests/test_parser_losses.py::test_a_statement_the_grammar_rejects_is_reported_with_file_and_line` |
 
 ## What a gap can cost
 
@@ -130,8 +131,8 @@ instead: `conf` records every probe result as a symbol (`CC_IS_GCC`, `CC_HAS_...
 |---|---|---|
 | Asking for more than needed | Before `kc.select-if`: a `select ... if` whose condition is false was followed anyway | **No.** The extra options resolve and are kept. The fragment is valid but not minimal |
 | Not following a select the kernel will follow | `select X if SMP`, where `SMP` is on by `default` and was not requested | Not a fragment error: `conf` applies the select itself. The report says the request does not decide the condition |
-| Asking for something that cannot hold | Two members of one choice | Yes, as a dropped option, without the reason |
-| Not predicting what else turns on | `imply`, `default y` | Not a fragment error. The attack-surface report must read the resolved `.config`, not the fragment |
+| Asking for something that cannot hold | Two members of one choice | Reported as a conflict before the build (`kc.choice`); `verify` would also show the dropped option |
+| Not predicting what else turns on | `imply`, `default y` | Not a fragment error. The report now says what the defaults and `imply` predict where the request decides it; the attack-surface report must still read the resolved `.config`, not the fragment |
 | A term that needs a value | `NR_CPUS >= 64` | Reported before the build as unevaluated |
 
 The first row was the only loss `verify` could not see, and `kc.select-if` closed it. On the router's
@@ -139,24 +140,32 @@ snapshot against 6.18.62 the proposal went from 60 options to 52: `KGDB`, `DEBUG
 `SCHED_SMT`, `ACPI_CONTAINER`, `CPU_IDLE_GOV_MENU` and `CPU_IDLE_GOV_LADDER` are no longer requested, and 96
 conditional selects are listed as not followed (93 the request does not decide, 3 not evaluated).
 
-A condition is judged against what was requested, not against defaults, which are not modelled yet
-(`kc.defaults`). An option the request never mentions is **undecided**, not off: a default or another
+A condition is judged against what was requested, not against defaults: `kc.defaults` predicts a promptless
+symbol from its own defaults, but does not feed that prediction back into other conditions. An option the request never mentions is **undecided**, not off: a default or another
 fragment may turn it on. So `select X if !Y` is followed only when the request itself requires `Y` off.
 The first version of this fix treated an unmentioned `Y` as off, and on the router it then requested
 `CPU_IDLE_GOV_LADDER` (selected `if !NO_HZ && !NO_HZ_IDLE`) although a role fragment sets `NO_HZ_IDLE=y`.
 Checking the resolved configuration against the previous one is what caught it.
 
+On the router's snapshot against 6.18.62 (measured after `kc.parser-losses`, `kc.choice`, `kc.defaults` and
+`kc.imply`) the fragment and the resolved configuration are byte-identical to the previous ones: 866 resolved
+options, 0 conflicts. The report gained a prediction for each of the 215 promptless symbols it lists: 212 on
+(205 of them because a followed select raises them, 7 from `default y`) and 1 off, and every one of the 212
+is `=y` in the resolved `.config`. One `imply` is listed as not known to take effect. A first version
+predicted 205 selected symbols off because it looked only at their defaults; comparing the report with the
+resolved `.config` caught it, and `test_a_followed_select_beats_a_default_n` holds it.
+
 ## Completion
 
-Of the 51 rows above, 20 are done, 9 are partial, 16 are gaps and 6 are skipped on purpose.
+Of the 51 rows above, 32 are done, 4 are partial, 9 are gaps and 6 are skipped on purpose.
 The rows that close the gaps, in the order that removes the most wrong proposals first:
 
 1. `kc.select-if`: done.
-2. `kc.choice`: 76 choices, each a possible unexplained drop.
-3. `kc.defaults`: 4,764 defaults; needed to predict promptless symbols.
-4. `kc.imply`: 451 uses; needed for an honest surface report.
+2. `kc.choice`: done.
+3. `kc.defaults`: done.
+4. `kc.imply`: done.
 5. `kc.values`: 359 valued symbols, 120 ranges, 192 comparisons.
 6. `kc.tristate`: matters once a target builds modules.
 7. `kc.macro`: 33 terms in dependencies, more in defaults.
-8. `kc.parser-losses`: three small reader faults.
+8. `kc.parser-losses`: done.
 9. `kc.conformance`: the measure of all of the above, as agreement with `conf` on the real tree.
