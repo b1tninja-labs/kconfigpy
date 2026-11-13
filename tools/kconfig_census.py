@@ -97,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     counts["symbols defined more than once"] = sum(len(found) > 1 for found in db.definitions.values())
     counts["files"] = len(files)
     counts["missing sources"] = len(db.missing_sources)
+    counts["parse errors"] = len(db.errors)
     for kind, number in sorted(Counter(d.kind or "(untyped)" for d in definitions).items()):
         counts[f"type: {kind}"] = number
     for key in sorted(counts):
