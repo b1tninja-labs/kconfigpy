@@ -35,9 +35,9 @@ def _fake_machine(root: Path) -> tuple[Path, Path]:
 
 def test_records_name_the_device_driver_and_module(tmp_path: Path) -> None:
     sysfs, modules = _fake_machine(tmp_path)
-    lines = snapshot.records(sysfs, modules)
+    lines = snapshot.records(sysfs, modules, log=lambda: "")
     assert lines[0] == "dev\tpci0000:00/0000:00:1f.0\tpci:v00008086d00001f18\tmy_drv\tmy_drv"
-    assert lines[1:] == ["mod\tmy_drv", "mod\tother"]
+    assert [line for line in lines if line.startswith("mod	")] == ["mod\tmy_drv", "mod\tother"]
 
 
 def test_records_round_trip_through_read_snapshot(tmp_path: Path) -> None:
@@ -77,3 +77,63 @@ def test_empty_sysfs_is_refused_not_written(tmp_path: Path) -> None:
     empty.mkdir()
     with pytest.raises(RuntimeError, match="refusing to write an empty snapshot"):
         snapshot.records(empty, tmp_path / "modules")
+
+
+def _unbound_machine(root: Path) -> tuple[Path, Path, Path]:
+    """A fake machine with one device that has no driver, a ``going`` module and a module alias table."""
+    sysfs, modules = _fake_machine(root)
+    orphan = sysfs / "pci0000:00" / "0000:00:02.0"
+    orphan.mkdir()
+    (orphan / "modalias").write_text("pci:v00001234d00005678sv00000000sd00000000bc03sc00i00\n", encoding="utf-8")
+    for name, state in (("my_drv", "live"), ("fading", "going"), ("builtin", None)):
+        entry = root / "module" / name
+        entry.mkdir(exist_ok=True)
+        if state:
+            (entry / "initstate").write_text(state + "\n", encoding="utf-8")
+    aliases = root / "modules.alias"
+    aliases.write_text(
+        "# comment\n"
+        "alias pci:v00001234d0000*sv*sd*bc*sc*i* ondemand-drv\n"
+        "alias pci:v00009999d* nomatch\n"
+        "alias pci:v00008086d00001f18* my_drv\n",
+        encoding="utf-8",
+    )
+    return sysfs, modules, aliases
+
+
+_LOG = (
+    "[    1.2] vendor_blob: loading out-of-tree module taints kernel.\n[    1.3] my_drv: module verification failed\n"
+)
+
+
+def test_boot_only_modules_are_recorded_as_seen(tmp_path: Path) -> None:
+    sysfs, modules, aliases = _unbound_machine(tmp_path)
+    lines = snapshot.records(sysfs, modules, aliases=aliases, log=lambda: _LOG)
+    seen = [line.split("\t") for line in lines if line.startswith("seen\t")]
+    assert ["seen", "fading", "sysmodule", "going"] in seen
+    assert ["seen", "ondemand_drv", "alias", "pci0000:00/0000:00:02.0"] in seen
+    assert any(row[:3] == ["seen", "vendor_blob", "dmesg"] for row in seen)
+    names = {row[1] for row in seen}
+    assert "my_drv" not in names, "a module that is loaded now is not boot-only"
+    assert "builtin" not in names and "nomatch" not in names
+
+
+def test_blind_records_say_what_could_not_be_seen(tmp_path: Path) -> None:
+    sysfs, modules, aliases = _unbound_machine(tmp_path)
+    lines = snapshot.records(sysfs, modules, aliases=tmp_path / "no-such-alias", log=lambda: None)
+    blind = {line.split("\t")[1] for line in lines if line.startswith("blind\t")}
+    assert {"dmesg", "modules.alias", "unbound-devices", "unlogged-unload", "absent-hardware"} <= blind
+    readable = snapshot.records(sysfs, modules, aliases=aliases, log=lambda: "")
+    kinds = {line.split("\t")[1] for line in readable if line.startswith("blind\t")}
+    assert "unlogged-unload" in kinds
+    assert not kinds & {"dmesg", "modules.alias", "unbound-devices"}
+
+
+def test_new_records_do_not_disturb_read_snapshot(tmp_path: Path) -> None:
+    sysfs, modules, aliases = _unbound_machine(tmp_path)
+    path = tmp_path / "snap.tsv"
+    lines = snapshot.records(sysfs, modules, aliases=aliases, log=lambda: _LOG)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    parsed = read_snapshot(path)
+    assert parsed.loaded == ["my_drv", "other"]
+    assert len(parsed.devices) == 2
