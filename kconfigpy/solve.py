@@ -25,6 +25,9 @@ class Solution:
     assumed: dict[str, str] = field(default_factory=dict)  # promptless symbol -> who needs it
     # promptless symbol -> its first visible default, when the request decides which one that is
     default_on: dict[str, str] = field(default_factory=dict)
+    # symbol -> the option that implies it, when its own dependencies hold: likely on, though not requested
+    implied: dict[str, str] = field(default_factory=dict)
+    implied_off: dict[str, str] = field(default_factory=dict)  # symbol -> why an imply is not known to take effect
     default_off: dict[str, str] = field(default_factory=dict)
     unknown: dict[str, str] = field(default_factory=dict)  # unevaluated term -> who needs it
     conflicts: list[str] = field(default_factory=list)
@@ -36,6 +39,7 @@ class Solver:
         self.db = db
         self._solution = Solution()
         self._pending: list[tuple[str, str, Expr]] = []  # (owner, target, condition) not yet followed
+        self._implies: list[tuple[str, str, Expr | None]] = []  # (owner, target, condition) of every imply seen
         self._excluded: dict[str, str] = {}  # symbol -> why the caller excludes it
 
     def exclude(self, name: str, why: str) -> None:
@@ -127,6 +131,9 @@ class Solver:
         for target, condition in definition.select_if:
             if (owner, target, condition) not in self._pending:
                 self._pending.append((owner, target, condition))
+        for implied, when in definition.implies:
+            if (owner, implied, when) not in self._implies:
+                self._implies.append((owner, implied, when))
 
     def holds(self, expr: Expr) -> bool | None:
         """Whether the request decides this condition: True, False, or None when it does not.
@@ -170,6 +177,7 @@ class Solver:
                         changed = True
         solution = self._solution
         self.predict_defaults()
+        self.judge_implies()
         solution.conditional.clear()
         for owner, target, condition in self._pending:
             if target in solution.enabled or target in solution.forced or target in solution.assumed:
@@ -183,6 +191,41 @@ class Solver:
             reason = f"selected by {owner} only if {show(condition)}, which {verdict}"
             previous = solution.conditional.get(target)
             solution.conditional[target] = f"{previous}; {reason}" if previous else reason
+
+    def judge_implies(self) -> None:
+        """Report each implied option as likely on when the request decides that its own dependencies hold.
+
+        ``imply`` is a weak select: it raises the target's default but never past the target's direct
+        dependencies, and the user can still turn it off. So it is never put in the fragment.
+        """
+        solution = self._solution
+        solution.implied.clear()
+        solution.implied_off.clear()
+        for owner, target, condition in self._implies:
+            if target in solution.enabled or target in solution.forced:
+                continue
+            by = f"implied by {owner}" + (f" if {show(condition)}" if condition is not None else "")
+            definition = self.db.preferred(target)
+            applies = True if condition is None else self.holds(condition)
+            if definition is None:
+                problem = "it is not defined"
+            elif target in self._excluded:
+                problem = f"it is excluded ({self._excluded[target]})"
+            elif applies is not True:
+                problem = "the condition " + ("is ruled out" if applies is False else "is not decided by the request")
+            else:
+                deps = list(definition.all_deps())
+                held = self.holds_all(deps)
+                if held is True:
+                    previous = solution.implied.get(target)
+                    solution.implied[target] = f"{previous}; {by}" if previous else f"{by}, and its dependencies hold"
+                    continue
+                shown = ", ".join(show(d) for d in deps)
+                problem = f"its dependencies ({shown}) " + ("do not hold" if held is False else "are not decided")
+            previous = solution.implied_off.get(target)
+            solution.implied_off[target] = f"{previous}; {by}, but {problem}" if previous else f"{by}, but {problem}"
+        for target in solution.implied:
+            solution.implied_off.pop(target, None)
 
     def predict_defaults(self) -> None:
         """Say whether each promptless symbol is on or off by default, where the request decides it.

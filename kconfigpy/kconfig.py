@@ -179,6 +179,7 @@ class Definition:
     deps: list[Expr] = field(default_factory=list)
     selects: list[str] = field(default_factory=list)  # unconditional: select X
     select_if: list[tuple[str, Expr]] = field(default_factory=list)  # select X if <expr>
+    implies: list[tuple[str, Expr | None]] = field(default_factory=list)  # imply X [if <expr>]
     defaults: list[tuple[Expr, Expr | None]] = field(default_factory=list)  # default VALUE [if COND], in file order
     blocks: list[_Block] = field(default_factory=list)
     prompt_condition: Expr | None = None
@@ -376,6 +377,9 @@ class _Parser:
         elif word == "default":
             target.has_default = True
             target.defaults.append(_default(rest))
+        elif word == "imply":
+            symbol, condition = _split_condition(rest)
+            target.implies.append((symbol, parse_expr(condition) if condition else None))
         elif word == "select":
             symbol, condition = _split_condition(rest)
             if condition is None:

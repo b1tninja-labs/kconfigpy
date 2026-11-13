@@ -154,6 +154,8 @@ def report_text(result: Trace) -> str:
         ("Conditional select not followed", solution.conditional),
         ("Must stay off", solution.forbidden),
         ("Left to the kernel (no prompt)", _with_defaults(solution)),
+        ("Implied, likely on", solution.implied),
+        ("Implied, not known to take effect", solution.implied_off),
         ("Not evaluated", solution.unknown),
         ("Undefined symbols", solution.undefined),
     ]
