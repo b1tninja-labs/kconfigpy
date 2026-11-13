@@ -77,6 +77,7 @@ class Trace:
     loaded_only: dict[str, list[str]]
     unmapped: list[str]
     ambiguous: dict[str, list[str]] = field(default_factory=dict)
+    builtin_statement: str | None = None
 
 
 def trace(
@@ -125,6 +126,8 @@ def fragment_text(result: Trace) -> str:
 
 def report_text(result: Trace) -> str:
     out = ["# Hardware trace", ""]
+    if result.builtin_statement is not None:
+        out += ["modules are off: drivers mapped to built-in symbols", "", result.builtin_statement, ""]
     for status in ("bound", "available", "unclaimed"):
         rows = [r for r in result.rows if r.status == status]
         out += [f"## {status.capitalize()} devices ({len(rows)})", ""]
