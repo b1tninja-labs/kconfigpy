@@ -61,8 +61,8 @@ Open research questions, each tied to a ROADMAP row:
 How much of the Kconfig language the reader handles is measured, construct by construct, in
 [kconfig-coverage.md](kconfig-coverage.md). In short: structure and dependencies are read almost
 completely (0.3% of terms unevaluated on 6.18.62), and value semantics are not modelled yet. The `kc.*`
-rows in `ROADMAP.md` close those gaps, with `kc.select-if` first because it is the one loss `verify`
-cannot detect, and `kc.conformance` last as the measure of the rest.
+rows in `ROADMAP.md` close those gaps. `kc.select-if` went first because it was the one loss `verify`
+could not detect, and it is done. `kc.conformance` is last, as the measure of the rest.
 
 ## Risks
 

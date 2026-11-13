@@ -19,9 +19,9 @@ Measured on the 6.18.62 tree for x86 with `tools/kconfig_census.py` (run it agai
 | Terms the reader could not evaluate | 225 (0.3%) |
 
 So the structure and the dependency graph are read almost completely. The losses are in **value
-semantics**: the reader records that an option has a `default`, a `select` or sits in a `choice`, but
-not when those apply. The largest one is the 1,348 `select ... if` lines (9% of all selects), whose
-condition is dropped.
+semantics**: the reader records that an option has a `default` or sits in a `choice`, but not when
+those apply. The condition of the 1,348 `select ... if` lines (9% of all selects) is kept and judged
+against the request, as far as the request decides it.
 
 kconfigpy never decides what a configuration resolves to. It proposes a fragment, the kernel's `conf`
 resolves it, and `verify` compares the two. The last column of each table says what a gap costs under
@@ -63,7 +63,7 @@ Tests are in `tests/test_kconfig_language.py` unless a file is named.
 | `def_bool`, `def_tristate` | 560 | partial | Type and "has a default". The value and its `if` are dropped | `test_def_bool_sets_the_type_and_a_default_without_a_prompt`; `kc.defaults` |
 | `default` | 4,204 | gap | Only "has a default" is recorded. The value and the 857 `if` conditions are dropped | `kc.defaults` |
 | `select` | 15,401 | partial | The target is recorded and followed | `test_select_records_the_selected_symbol`, `tests/test_select.py::test_select_chain_is_followed_and_each_option_has_a_reason` |
-| `select ... if <expr>` | 1,348 | gap | The condition is dropped, so the select is treated as unconditional | `kc.select-if` |
+| `select ... if <expr>` | 1,348 | done | The condition is kept. The select is followed only when the requested options make it hold; otherwise it is listed as not followed, with the condition | `tests/test_select_if.py::test_unmet_condition_is_not_followed_and_says_why` |
 | `imply` | 451 | gap | Not read | `kc.imply` |
 | `range` | 120 | gap | Not read | `kc.values` |
 | `modules` | 1 | gap | Not read; `MODULES` is an ordinary symbol to the reader | `kc.tristate` |
@@ -128,19 +128,26 @@ instead: `conf` records every probe result as a symbol (`CC_IS_GCC`, `CC_HAS_...
 
 | Kind of loss | Example | Does `verify` catch it? |
 |---|---|---|
-| Asking for more than needed | A `select ... if` whose condition is false is followed anyway | **No.** The extra options resolve and are kept. The fragment is valid but not minimal |
+| Asking for more than needed | Before `kc.select-if`: a `select ... if` whose condition is false was followed anyway | **No.** The extra options resolve and are kept. The fragment is valid but not minimal |
+| Not following a select the kernel will follow | `select X if SMP`, where `SMP` is on by `default` and was not requested | Not a fragment error: `conf` applies the select itself. The report says the condition was not met by the request |
 | Asking for something that cannot hold | Two members of one choice | Yes, as a dropped option, without the reason |
 | Not predicting what else turns on | `imply`, `default y` | Not a fragment error. The attack-surface report must read the resolved `.config`, not the fragment |
 | A term that needs a value | `NR_CPUS >= 64` | Reported before the build as unevaluated |
 
-The first row is the one to fix first, which is why `kc.select-if` leads the roadmap rows below.
+The first row was the only loss `verify` could not see, and `kc.select-if` closed it. On the router's
+snapshot against 6.18.62 the proposal went from 60 options to 53: `KGDB`, `DEBUG_KERNEL`, `SMP`, `PROC_FS`,
+`SCHED_SMT`, `ACPI_CONTAINER` and `CPU_IDLE_GOV_MENU` are no longer requested, and 93 conditional selects are
+listed as not followed (91 unmet by the request, 2 not evaluated).
+
+A condition is judged against what was requested, not against defaults, which are not modelled yet
+(`kc.defaults`). So "not met" means the request does not make it hold, not that `conf` will leave it off.
 
 ## Completion
 
-Of the 51 rows above, 19 are done, 9 are partial, 17 are gaps and 6 are skipped on purpose.
+Of the 51 rows above, 20 are done, 9 are partial, 16 are gaps and 6 are skipped on purpose.
 The rows that close the gaps, in the order that removes the most wrong proposals first:
 
-1. `kc.select-if`: 1,348 uses, and the only loss `verify` cannot see.
+1. `kc.select-if`: done.
 2. `kc.choice`: 76 choices, each a possible unexplained drop.
 3. `kc.defaults`: 4,764 defaults; needed to predict promptless symbols.
 4. `kc.imply`: 451 uses; needed for an honest surface report.

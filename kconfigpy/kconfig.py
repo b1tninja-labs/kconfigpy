@@ -122,6 +122,22 @@ def _comparison(left: str, operator: str, right: str) -> Expr:
     return Unknown(f"{left} {operator} {right}")
 
 
+def show(expr: Expr) -> str:
+    """An expression as Kconfig text, for reasons and reports."""
+    if isinstance(expr, Sym):
+        return expr.name
+    if isinstance(expr, Const):
+        return expr.value
+    if isinstance(expr, Not):
+        inner = show(expr.term)
+        return f"!{inner}" if isinstance(expr.term, Sym | Const) else f"!({inner})"
+    if isinstance(expr, And):
+        return " && ".join(f"({show(e)})" if isinstance(e, Or) else show(e) for e in (expr.left, expr.right))
+    if isinstance(expr, Or):
+        return f"{show(expr.left)} || {show(expr.right)}"
+    return expr.text
+
+
 def parse_expr(text: str) -> Expr:
     """Parse one dependency expression; anything unparseable becomes ``Unknown``."""
     parser = _ExprParser(text)
@@ -147,7 +163,8 @@ class Definition:
     has_prompt: bool = False
     has_default: bool = False
     deps: list[Expr] = field(default_factory=list)
-    selects: list[str] = field(default_factory=list)
+    selects: list[str] = field(default_factory=list)  # unconditional: select X
+    select_if: list[tuple[str, Expr]] = field(default_factory=list)  # select X if <expr>
     blocks: list[_Block] = field(default_factory=list)
     prompt_condition: Expr | None = None
 
@@ -276,7 +293,11 @@ class _Parser:
         elif word == "default":
             target.has_default = True
         elif word == "select":
-            target.selects.append(rest.split()[0])
+            symbol, condition = _split_condition(rest)
+            if condition is None:
+                target.selects.append(symbol)
+            else:
+                target.select_if.append((symbol, parse_expr(condition)))
 
 
 def _split_tab(line: str) -> tuple[str, str, str]:

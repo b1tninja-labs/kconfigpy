@@ -116,6 +116,7 @@ def report_text(result: Trace) -> str:
     out += [f"- `{s}`: {why}" for s, why in sorted(solution.enabled.items())]
     sections = [
         ("Forced by select, dependencies unmet", solution.forced),
+        ("Conditional select not followed", solution.conditional),
         ("Must stay off", solution.forbidden),
         ("Left to the kernel (no prompt)", solution.assumed),
         ("Not evaluated", solution.unknown),

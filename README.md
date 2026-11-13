@@ -33,9 +33,9 @@ and CVE filters ([CVEhound](https://github.com/linux-analysis/cvehound)) are com
 - The Kconfig reader extracts dependencies only. On Linux 6.18.62 for x86 it reads all 18,456 symbols
   and leaves 225 of 72,310 dependency terms unevaluated (numeric tests and compiler probes), which are
   reported and left to `conf`.
-- It does not yet model when a `select`, `default`, `imply` or `choice` applies. The one loss `verify`
-  cannot see is `select X if <expr>`: the condition is dropped, so a fragment can ask for more than it
-  needs. [docs/kconfig-coverage.md](docs/kconfig-coverage.md) lists every construct, its status and the
+- It does not yet model when a `default`, `imply` or `choice` applies. A `select X if <expr>` is followed
+  only when the requested options make the condition hold, and is reported otherwise.
+  [docs/kconfig-coverage.md](docs/kconfig-coverage.md) lists every construct, its status and the
   roadmap row that closes it.
 - Module-to-option mapping reads `obj-$(CONFIG_X)` lines, so a module built another way is listed
   as unmapped, not guessed.
