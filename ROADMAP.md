@@ -16,7 +16,12 @@ if the behaviour broke. `ROADMAP.md` is the source of truth; the GitHub issues a
 | `fwd.builtin` | [part] | forward | With `CONFIG_MODULES` off, map drivers to built-in symbols and say so in the report | `tests/test_kbuild_builtin.py::test_modules_off_maps_driver_to_builtin_symbol`, `tests/test_kbuild_builtin.py::test_statement_says_modules_are_off_and_names_the_drivers`. The mapping and the statement are `kbuild.builtin_map`; the trace report does not yet print the statement |
 | `fwd.banned` | [x] | forward | Take the banned-feature list from the firmware's `kernel/banned.list` as the input to the attack-surface report, not a list of its own | `tests/test_surface.py::test_the_banned_file_is_the_only_list_checked`, `tests/test_surface.py::test_banned_list_is_read_one_option_per_line` |
 | `test.fixture-tree` | [x] | test | A small kernel-tree fixture, so `generate` runs end to end in CI without the network; this closes `cli.generate` | `tests/test_generate.py::test_fixture_tree_has_the_shape_generate_needs`, `tests/test_generate.py::test_generate_from_snapshot_writes_fragment_and_report` |
-| `ci.golden` | [ ] | ci | A checked-in golden fragment for the firmware kernel, so a change in the tool shows as a diff in CI | |
+| `ci.golden` | [ ] | ci | A checked-in golden fragment for the firmware kernel, so a change in the tool shows as a diff in CI; it depends on `verify.exact-lines` and `fwd.reproducible` | |
+| `snap.boot-only` | [ ] | snapshot | Record modules that load only at boot or on demand, and list drivers the snapshot cannot see, so a fragment states what it could not cover | |
+| `verify.exact-lines` | [ ] | verify | Match every fragment line verbatim against the resolved `.config`, so `CONFIG_NR_CPUS=1` never matches `CONFIG_NR_CPUS=128` | |
+| `fwd.reproducible` | [ ] | forward | Flag options that break reproducible builds (absolute paths such as `CONFIG_DEBUG_EFI`, timestamps, `CONFIG_BUILD_SALT`) in the report and in `verify` | |
+| `fwd.diff` | [ ] | forward | Produce a fragment from the diff between a golden config and a build config, with each line's reason carried over | |
+| `fwd.minimal` | [ ] | forward | A split mode that writes a minimal defconfig, keeping only the flags that differ from the kernel's defaults, for version control | |
 
 | `rev.evidence` | [ ] | reverse | Recover evidence from a kernel image: embedded config, kallsyms, `__ksymtab`, `__kcrctab`, vermagic | |
 | `rev.symbols` | [ ] | reverse | Symbol presence: `obj-$(CONFIG_X)` makes a present symbol evidence for its option | |
