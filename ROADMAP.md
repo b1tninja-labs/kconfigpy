@@ -36,7 +36,7 @@ if the behaviour broke. `ROADMAP.md` is the source of truth; the GitHub issues a
 | `kc.tristate` | [ ] | kconfig | Three-valued evaluation (`n` < `m` < `y`, `&&` as min, `||` as max), the `modules` symbol, `depends on m` and `SYM = m` | |
 | `kc.macro` | [ ] | kconfig | Read macro assignments and expand calls from recorded probe results (the `CC_*` symbols of a `.config`); never run a shell | |
 | `kc.parser-losses` | [x] | kconfig | Fix three reader faults: an escaped quote ends a constant early, an attribute after `help` on a `menu` or `choice` is dropped, and a statement the grammar rejects is ignored silently | `tests/test_parser_losses.py::test_a_statement_the_grammar_rejects_is_reported_with_file_and_line` |
-| `kc.conformance` | [ ] | kconfig | Differential test against the kernel's own `conf` on the pinned tree: for a set of requests, the predicted and resolved configurations agree, and the agreement rate is recorded | |
+| `kc.conformance` | [x] | kconfig | Differential test against the kernel's own `conf` on the pinned tree: for a set of requests, the predicted and resolved configurations agree, and the agreement rate is recorded; measured: 95.5% of proposed options kept by `conf` on the pinned tree (docs/conformance.md) | `tests/test_conformance.py::test_summary_rates_and_most_common_drop` |
 | `rev.evidence` | [ ] | reverse | Recover evidence from a kernel image: embedded config, kallsyms, `__ksymtab`, `__kcrctab`, vermagic | |
 | `rev.symbols` | [ ] | reverse | Symbol presence: `obj-$(CONFIG_X)` makes a present symbol evidence for its option | |
 | `rev.crc` | [ ] | reverse | CRC sensitivity map: flip one option at a time, record which modversion CRCs change | |

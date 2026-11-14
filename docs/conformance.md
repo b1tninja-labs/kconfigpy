@@ -77,3 +77,33 @@ container ran all 208 resolutions. None failed.
 
 The per-request drop lists are in `results.jsonl` in the measurement's output directory. They were kept outside the
 repository because they are derived from a real hardware snapshot.
+
+## Results after the undefined-symbol fix
+
+The first run's hypothesis was partly right and mostly different. The drops did not come from block-scoped
+dependencies. The most dropped symbols (`SND_SOC_TEGRA`, `TEGRA20_APB_DMA`, `APPLE_MAILBOX`) all say
+`depends on ARCH_X || COMPILE_TEST`. `COMPILE_TEST` is never chosen, and `ARCH_X` is not defined for x86, but
+the solver counted an undefined symbol as free and took the dead branch. Kconfig reads an undefined symbol as
+`n`. The solver now treats such a branch as impossible, and a settable option whose dependency cannot hold is
+listed as "Wanted but cannot hold here" and not proposed.
+
+Rerun on 2026-11-13 with the same method, seed and sample (200 sampled symbols plus the router snapshot's
+bound symbols, now 217 requests because the repository's snapshot binds 9 more symbols than the scratch copy
+of the first run):
+
+| Measure | Before the fix (same 217 requests) | After the fix |
+|---|---|---|
+| Requests with no dropped option | 140 (65%) | 188 (87%) |
+| Options proposed | 1,139 | 874 |
+| Proposed options `conf` kept | 1,029 (**90.3%**) | 835 (**95.5%**) |
+| Proposed options `conf` dropped | 110 | 39 |
+
+Proposals fell by 265: 71 of them were options `conf` dropped, and the other 194 were options `conf` kept. The
+likely reason for the second group is that an option that cannot hold is no longer walked, so the dependencies
+it would have pulled in (for example `COMMON_CLK` and `RESET_CONTROLLER` for `SND_SOC_TEGRA`) are not proposed
+either. That is the right behaviour, since nothing needs them, but it is an inference. `results.jsonl` keeps
+only each request's dropped list, not its proposals, so this run does not prove it request by request.
+
+The 39 that remain are single drops across 39 symbols (for example `DRM_PANEL_NOVATEK_NT36523`, `DVB_DRX39XYJ`,
+`DVB_EC100`, `EISA`, `IMX_SCU`). Their cause is not examined here. The router's resolved configuration is
+unchanged by the fix: 866 options, `verify` kept 188 and dropped none.

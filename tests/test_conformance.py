@@ -71,7 +71,8 @@ def test_summary_rates_and_most_common_drop() -> None:
     assert summary["dropped"] == 2
     assert summary["extra"] == 3  # X in r1, X in r2, A in r3
     assert summary["kept_share"] == pytest.approx(0.6)
-    assert summary["most_dropped"][0] == ("B", 2)
+    most_dropped = summary["most_dropped"]
+    assert isinstance(most_dropped, list) and most_dropped[0] == ("B", 2)
 
 
 def test_summary_with_nothing_proposed_has_no_rate_rather_than_a_division_error() -> None:
