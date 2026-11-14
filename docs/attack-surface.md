@@ -16,7 +16,7 @@
 
 **Banned and excluded lists are inputs.** `read_banned` reads the firmware's `kernel/banned.list` and `read_exclude` reads `kernel/exclude.list`. Both take one option per line, ignore `#` comments, accept a `CONFIG_` prefix, and refuse a malformed line with its line number. The module holds no list of its own.
 
-**Code is attributed through the module map.** `kconfigpy.kbuild.module_map(tree)` reads each `obj-$(CONFIG_X) += name.o` in the kernel tree. An enabled option with no mapping is listed as unmapped and is not guessed at. Options with no module of their own (`KEXEC`, `INPUT`) appear there.
+**Code is attributed through the module map.** `kconfigpy.kbuild.module_map(tree)` reads each `obj-$(CONFIG_X) += name.o` in the kernel tree. An enabled option with no mapping is listed as unmapped and is not guessed at. Options that build no module, such as `KEXEC` on this tree, appear as unmapped only when no `obj-$(CONFIG_X)` line names them.
 
 ## Reproduce
 
@@ -59,6 +59,10 @@ Inputs: `out/kernel.config` (3,400 lines, Linux 6.18.62 x86_64), the nine fragme
 | Enabled features the fragments did not name (`unrequested`) | 637 |
 | Banned options enabled | **0** of 42 |
 | Excluded options enabled | **1** of 17 (`INPUT=y`) |
+| Modules in the x86 module map (kernel tree `Makefile`/`Kbuild`) | 14,670 |
+| Enabled features with a module mapping | 248 of 792 |
+| Enabled features with no module mapping (`unmapped`) | 544 |
+| Unrequested features with a mapping / without | 161 / 476 |
 
 Every fragment-named value matches the resolved config exactly. Every banned option is absent from the resolved config. The 637 unrequested features come from `default y`, `select` and `imply` in the Kconfig tree; they are the reason the resolved config is the authority.
 
@@ -66,7 +70,13 @@ Every fragment-named value matches the resolved config exactly. Every banned opt
 
 - **No banned option is on.** None of the 42 options in `banned.list` is set in `out/kernel.config`, including `MODULES`, `KEXEC`, `USER_NS`, `IO_URING` and the `CRYPTO_USER_API*` family.
 - **`INPUT` is on, against `exclude.list`.** `exclude.list` lists `INPUT` under "Power button: nothing here needs a key press event", and says it is removed from the generated hardware fragment. But `kernel/fragments/15-console-key.config` line 2 names `CONFIG_INPUT=y`, and the resolved config has it. So the hand-written fragment and the exclude list disagree, and the exclude list is not enforced on the fragments. The 16 other excluded options are absent from the resolved config.
-- **Code attribution did not run.** The Docker daemon did not answer in this session: `docker version` and `docker volume ls` timed out, although Docker Desktop's processes were running and the engine pipe was missing. The code section of the report is therefore empty for this run, and no option is attributed to a module. Rerun the reproduce step once the engine responds.
+- **No banned option brings code, because none is on.** The module map was built from the kernel tree, so the `banned.list` options that have module entries (for example `KEXEC`, `USER_NS`, `IO_URING`, `BT`) would be attributed if they were enabled. None is.
+- **`INPUT` brings `input_core`.** The excluded `INPUT=y` is built as `input_core`, so turning it off removes that module.
+- **Most of the set is unmapped.** 544 of 792 enabled features have no `obj-$(CONFIG_X)` line; no `obj-$(CONFIG_X)` line in the tree's Makefiles or Kbuild files names them. The report says so rather than guessing; this run did not check why each one is unmapped.
+
+## Code-attribution run
+
+The kernel tree's `Makefile` and `Kbuild` files were copied out of the `rooter-build` volume with `docker run --rm -v rooter-build:/work:ro rooter-builder:latest sh -c 'cd /work/src/linux-6.18.62 && find . \( -name Makefile -o -name Kbuild \) | tar -cf - -T -'` (3,282 files), then `module_map(tree, "x86")` ran on that copy. The Docker engine answered on the second attempt, after it was started by hand.
 
 ## Limits
 
