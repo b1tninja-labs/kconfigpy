@@ -21,6 +21,9 @@ class Solution:
     # only when the requested options make <expr> hold
     conditional: dict[str, str] = field(default_factory=dict)
     excluded: dict[str, str] = field(default_factory=dict)  # symbol on the caller's exclude list -> who wanted it
+    # settable symbol wanted but not proposed: a dependency of it cannot hold here (an undefined symbol is n,
+    # a banned or excluded one is never chosen), so the kernel would drop it
+    unsatisfiable: dict[str, str] = field(default_factory=dict)
     forbidden: dict[str, str] = field(default_factory=dict)  # symbol -> why it must stay off
     assumed: dict[str, str] = field(default_factory=dict)  # promptless symbol -> who needs it
     # promptless symbol -> its first visible default, when the request decides which one that is
@@ -58,6 +61,8 @@ class Solver:
         if isinstance(expr, Sym):
             if expr.name in BANNED or expr.name in self._solution.forbidden or expr.name in self._excluded:
                 return math.inf
+            if expr.name not in self.db.definitions:
+                return math.inf  # Kconfig reads an undefined symbol as n, so this branch can never hold
             on = expr.name in self._solution.enabled or expr.name in self._solution.forced
             return 0 if on or not self.db.is_settable(expr.name) else 1
         if isinstance(expr, Const):
@@ -76,8 +81,12 @@ class Solver:
         if definition is not None:
             self.follow_selects(definition, name)
 
-    def enable(self, name: str, why: str) -> Definition | None:
-        """Enable a symbol and walk its dependencies; return its definition if it switched on."""
+    def enable(self, name: str, why: str, check_dependencies: bool = True) -> Definition | None:
+        """Enable a symbol and walk its dependencies; return its definition if it switched on.
+
+        A settable symbol one of whose dependencies cannot hold is not enabled but listed as unsatisfiable.
+        ``select`` skips that check, because a select forces its target on whatever its dependencies say.
+        """
         if name in self._solution.enabled or name in self._solution.forced:
             return None
         if name in self._excluded:
@@ -99,6 +108,15 @@ class Solver:
                 return None
             self._solution.assumed[name] = why
         else:
+            if check_dependencies:
+                blocked = next(
+                    (d for d in definition.all_deps() if not isinstance(d, Const) and self.cost(d) == math.inf), None
+                )  # a bare constant such as "depends on m" is a conflict, reported by satisfy()
+                if blocked is not None:
+                    self._solution.unsatisfiable.setdefault(
+                        name, f"{why}; but {show(blocked)} cannot hold here, so the kernel would drop it"
+                    )
+                    return None
             rival = self.choice_rival(definition, name)
             if rival is not None:
                 held = self._solution.enabled.get(rival) or self._solution.forced[rival]
@@ -282,7 +300,7 @@ class Solver:
         why = f"selected by {owner}{condition}"
         self._selected_by.setdefault(target, f"{owner}{condition}")
         before = Counter(self.problems())
-        definition = self.enable(target, why)
+        definition = self.enable(target, why, check_dependencies=False)
         if definition is None:
             return
         new = sorted((Counter(self.problems()) - before).elements())

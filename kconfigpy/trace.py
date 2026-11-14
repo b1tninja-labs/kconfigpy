@@ -169,6 +169,7 @@ def report_text(result: Trace) -> str:
     sections = [
         ("Forced by select, dependencies unmet", solution.forced),
         ("Excluded on request", solution.excluded),
+        ("Wanted but cannot hold here", solution.unsatisfiable),
         ("Conditional select not followed", solution.conditional),
         ("Must stay off", solution.forbidden),
         ("Left to the kernel (no prompt)", _with_defaults(solution)),
