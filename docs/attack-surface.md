@@ -59,6 +59,10 @@ Inputs: `out/kernel.config` (3,400 lines, Linux 6.18.62 x86_64), the nine fragme
 | Enabled features the fragments did not name (`unrequested`) | 637 |
 | Banned options enabled | **0** of 42 |
 | Excluded options enabled | **1** of 17 (`INPUT=y`) |
+| Modules in the x86 module map (kernel tree `Makefile`/`Kbuild`) | 14,670 |
+| Enabled features with a module mapping | 248 of 792 |
+| Enabled features with no module mapping (`unmapped`) | 544 |
+| Unrequested features with a mapping / without | 161 / 476 |
 
 Every fragment-named value matches the resolved config exactly. Every banned option is absent from the resolved config. The 637 unrequested features come from `default y`, `select` and `imply` in the Kconfig tree; they are the reason the resolved config is the authority.
 
@@ -66,7 +70,13 @@ Every fragment-named value matches the resolved config exactly. Every banned opt
 
 - **No banned option is on.** None of the 42 options in `banned.list` is set in `out/kernel.config`, including `MODULES`, `KEXEC`, `USER_NS`, `IO_URING` and the `CRYPTO_USER_API*` family.
 - **`INPUT` is on, against `exclude.list`.** `exclude.list` lists `INPUT` under "Power button: nothing here needs a key press event", and says it is removed from the generated hardware fragment. But `kernel/fragments/15-console-key.config` line 2 names `CONFIG_INPUT=y`, and the resolved config has it. So the hand-written fragment and the exclude list disagree, and the exclude list is not enforced on the fragments. The 16 other excluded options are absent from the resolved config.
-- **Code attribution did not run.** The Docker daemon did not answer in this session: `docker version` and `docker volume ls` timed out, although Docker Desktop's processes were running and the engine pipe was missing. The code section of the report is therefore empty for this run, and no option is attributed to a module. Rerun the reproduce step once the engine responds.
+- **No banned option brings code, because none is on.** The module map was built from the kernel tree, so the `banned.list` options that have module entries (for example `KEXEC`, `USER_NS`, `IO_URING`, `BT`) would be attributed if they were enabled. None is.
+- **`INPUT` brings `input_core`.** The excluded `INPUT=y` is built as `input_core`, so turning it off removes that module.
+- **Most of the set is unmapped.** 544 of 792 enabled features have no `obj-$(CONFIG_X)` line; they are typically bool options that gate code in Kconfig rather than build a module (options built into the core objects, or options that only set a header). The report says so rather than guessing.
+
+## Code-attribution run
+
+The kernel tree's `Makefile` and `Kbuild` files were copied out of the `rooter-build` volume with `docker run --rm -v rooter-build:/work:ro rooter-builder:latest sh -c 'cd /work/src/linux-6.18.62 && find . \( -name Makefile -o -name Kbuild \) | tar -cf - -T -'` (3,282 files), then `module_map(tree, "x86")` ran on that copy. The Docker engine answered on the second attempt, after it was started by hand.
 
 ## Limits
 
