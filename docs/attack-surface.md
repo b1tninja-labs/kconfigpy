@@ -16,7 +16,7 @@
 
 **Banned and excluded lists are inputs.** `read_banned` reads the firmware's `kernel/banned.list` and `read_exclude` reads `kernel/exclude.list`. Both take one option per line, ignore `#` comments, accept a `CONFIG_` prefix, and refuse a malformed line with its line number. The module holds no list of its own.
 
-**Code is attributed through the module map.** `kconfigpy.kbuild.module_map(tree)` reads each `obj-$(CONFIG_X) += name.o` in the kernel tree. An enabled option with no mapping is listed as unmapped and is not guessed at. Options with no module of their own (`KEXEC`, `INPUT`) appear there.
+**Code is attributed through the module map.** `kconfigpy.kbuild.module_map(tree)` reads each `obj-$(CONFIG_X) += name.o` in the kernel tree. An enabled option with no mapping is listed as unmapped and is not guessed at. Options that build no module, such as `KEXEC` on this tree, appear as unmapped only when no `obj-$(CONFIG_X)` line names them.
 
 ## Reproduce
 
@@ -72,7 +72,7 @@ Every fragment-named value matches the resolved config exactly. Every banned opt
 - **`INPUT` is on, against `exclude.list`.** `exclude.list` lists `INPUT` under "Power button: nothing here needs a key press event", and says it is removed from the generated hardware fragment. But `kernel/fragments/15-console-key.config` line 2 names `CONFIG_INPUT=y`, and the resolved config has it. So the hand-written fragment and the exclude list disagree, and the exclude list is not enforced on the fragments. The 16 other excluded options are absent from the resolved config.
 - **No banned option brings code, because none is on.** The module map was built from the kernel tree, so the `banned.list` options that have module entries (for example `KEXEC`, `USER_NS`, `IO_URING`, `BT`) would be attributed if they were enabled. None is.
 - **`INPUT` brings `input_core`.** The excluded `INPUT=y` is built as `input_core`, so turning it off removes that module.
-- **Most of the set is unmapped.** 544 of 792 enabled features have no `obj-$(CONFIG_X)` line; they are typically bool options that gate code in Kconfig rather than build a module (options built into the core objects, or options that only set a header). The report says so rather than guessing.
+- **Most of the set is unmapped.** 544 of 792 enabled features have no `obj-$(CONFIG_X)` line; no `obj-$(CONFIG_X)` line in the tree's Makefiles or Kbuild files names them. The report says so rather than guessing; this run did not check why each one is unmapped.
 
 ## Code-attribution run
 
