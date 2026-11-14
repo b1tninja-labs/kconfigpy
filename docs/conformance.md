@@ -6,10 +6,8 @@ come from `tools/conformance.py` and nothing else.
 
 ## Status of the measurement
 
-**Not yet measured.** The run needs the builder image and its `rooter-build` volume, and the Docker
-engine on the measuring machine was not responding when this was written (the `com.docker.service`
-Windows service was stopped, and `docker version` hung). No agreement figure is recorded here until a run
-completes. The comparison logic is tested without Docker (`tests/test_conformance.py`).
+**Measured** on the pinned tree (Linux 6.18.62, x86), with the builder image and the `rooter-build` volume.
+The comparison logic is also tested without Docker (`tests/test_conformance.py`).
 
 ## Method
 
@@ -41,11 +39,41 @@ completes. The comparison logic is tested without Docker (`tests/test_conformanc
     python tools/conformance.py --volume rooter-build --image rooter-builder:latest \
         --sample 200 --seed 1 --out <a directory outside the repository>
 
-Pass `--requests <file>` to add the bound-device symbols. `--tree <host Kconfig copy>` skips the volume
+Pass `--snapshot <file>` to add the symbols the snapshot's bound drivers map to, or `--requests <file>` for a
+list of symbols. `--tree <host Kconfig copy>` skips the volume
 extraction. The script writes `summary.json` and `results.jsonl` to `--out`.
 
 ## Results
 
-None yet. When a run completes, record here: the date, the kernel version, the sample and seed, the request
-count, and the table from `summary.json` (kept share, proposed share of conf, requests with no drop, extra
-count, and the most-dropped options with their counts).
+Run on 2026-11-13: `--snapshot` (the router's 64-device snapshot, bound drivers mapped through the kernel's
+Makefiles), plus `--sample 200 --seed 1` over the settable symbols. The requests are the 200 sampled symbols
+and the snapshot's bound symbols, deduplicated: **208 requests**, each resolved as its own fragment. One
+container ran all 208 resolutions. None failed.
+
+| Measure | Value |
+|---|---|
+| Requests | 208 |
+| Requests with no dropped option | 131 (63%) |
+| Options proposed | 1,100 |
+| Proposed options `conf` kept | 990 (**kept share 90.0%**) |
+| Proposed options `conf` dropped | 110 |
+| Options `conf` enabled, across all requests | 109,840 |
+| Extra options (enabled by `conf`, never proposed) | 108,850 |
+| Proposed share of `conf`'s options | 0.9% |
+
+**Two kinds of disagreement, and they differ in size:**
+
+- **Extra options dominate by volume.** Almost all of `conf`'s enabled options are defaults that `allnoconfig`
+  turns on (`def_bool y`, `default` lines), which kconfigpy does not model yet. This is the `kc.defaults` row,
+  not a proposal error. It is why the proposed share of `conf`'s options is under 1%.
+- **Dropped proposals are spread across many symbols.** There are 110 drops over 105 distinct symbols; no symbol
+  is dropped more than 3 times. The drops cluster on the requested symbol itself (for example `PINCTRL_SUN5I`,
+  `COMMON_CLK_MT7622`, `CLK_BCM_HR2`, `NET_VENDOR_PASEMI`), and on platform-gated drivers (`ARCH_R8A78000`,
+  `SND_SOC_TEGRA`, `TEGRA20_APB_DMA`). The most dropped are `SND_SOC_TEGRA` and `TEGRA20_APB_DMA` (3 each).
+
+  **Cause not confirmed.** `PINCTRL_SUN5I` has no `depends on` of its own, so the gate must come from its enclosing
+  menu or `if` block, or from a condition the reader does not carry into the solver. That is a hypothesis to test,
+  not a finding. The likely area is block-scoped dependencies in `kconfig.py`, which this run does not isolate.
+
+The per-request drop lists are in `results.jsonl` in the measurement's output directory. They were kept outside the
+repository because they are derived from a real hardware snapshot.

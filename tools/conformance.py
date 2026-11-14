@@ -28,8 +28,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from kconfigpy.kbuild import module_map, normalize
 from kconfigpy.kconfig import KconfigDb, read_kconfig
 from kconfigpy.solve import Solver
+from kconfigpy.trace import read_snapshot
 from kconfigpy.verify import read_config
 
 KERNEL = "/work/src/linux-6.18.62"
@@ -96,7 +98,8 @@ def extract_kconfig(volume: str, image: str, into: Path) -> Path:
     listing = into / "kconfig-files.txt"
     archive = into / "kconfig.tar"
     script = (
-        f"cd {KERNEL} && find . -name 'Kconfig*' -type f > /io/kconfig-files.txt"
+        f"cd {KERNEL} && find . \\( -name 'Kconfig*' -o -name 'Makefile*' -o -name 'Kbuild*' \\) -type f"
+        " > /io/kconfig-files.txt"
         " && tar -cf /io/kconfig.tar -T /io/kconfig-files.txt"
     )
     run(["docker", "run", "--rm", "-v", f"{volume}:/work:ro", "-v", f"{into}:/io", image, "sh", "-c", script])
@@ -134,10 +137,22 @@ def run(command: list[str]) -> None:
         raise RuntimeError(f"{command[0]} failed ({proc.returncode}): {proc.stderr.strip()[-2000:]}")
 
 
-def requests_from(args: argparse.Namespace, db: KconfigDb) -> list[str]:
+def bound_symbols(snapshot: Path, tree: Path) -> list[str]:
+    """Symbols the snapshot's bound drivers map to, through the kernel's Makefiles."""
+    modules = module_map(tree, "x86")
+    names: set[str] = set()
+    for device in read_snapshot(snapshot).devices:
+        name = device.module or normalize(device.driver)
+        names |= modules.get(name, set())
+    return sorted(names)
+
+
+def requests_from(args: argparse.Namespace, db: KconfigDb, tree: Path) -> list[str]:
     names: list[str] = []
     if args.requests:
         names += [line.strip() for line in args.requests.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if args.snapshot:
+        names += bound_symbols(args.snapshot, tree)
     if args.sample:
         settable = sorted(name for name in db.definitions if db.is_settable(name))
         names += random.Random(args.seed).sample(settable, min(args.sample, len(settable)))
@@ -150,6 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--volume", default=DEFAULT_VOLUME, help="docker volume holding the pinned kernel tree")
     parser.add_argument("--image", default=DEFAULT_IMAGE, help="builder image with make and conf")
     parser.add_argument("--requests", type=Path, help="one symbol per line, each resolved as its own request")
+    parser.add_argument("--snapshot", type=Path, help="a hardware snapshot: every symbol its bound drivers map to")
     parser.add_argument("--sample", type=int, default=0, help="also a seeded random sample of settable symbols")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--out", type=Path, required=True, help="write results.jsonl and summary.json here")
@@ -160,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         tree = args.tree or extract_kconfig(args.volume, args.image, scratch)
         db = read_kconfig(tree, "x86")
-        names = requests_from(args, db)
+        names = requests_from(args, db, tree)
         proposals = {name: propose(db, name) for name in names}
         fragments = {name: fragment_text(proposals[name]) for name in names}
         resolved = resolve_batch(fragments, args.volume, args.image, scratch)
